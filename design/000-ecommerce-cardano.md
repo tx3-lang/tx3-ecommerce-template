@@ -255,7 +255,7 @@ All external and shared types are declared globally in `@types/` (root level) fo
     "typeRoots": ["./node_modules/@types", "./@types"],
     "baseUrl": ".",
     "paths": {
-      "~/*": ["./src/*"]
+      "@/*": ["./src/*"]
     }
   }
 }
