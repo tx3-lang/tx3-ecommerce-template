@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* Additional CSS variables for white-label */
+:root {
+	/* Custom brand colors */
+	--brand-primary: #3b82f6;
+	--brand-secondary: #1e40af;
+	--brand-accent: #f59e0b;
+
+	/* Custom fonts */
+	--font-brand: "Inter", sans-serif;
+
+	/* Brand identity */
+	--brand-logo-url: "/logo.png";
+	--brand-name: "Mi E-commerce";
+}
+
+/* Additional CSS variables for white-label */
+:root {
+	--brand-logo-url: "/logo.png";
+	--brand-name: "Mi E-commerce";
+}
