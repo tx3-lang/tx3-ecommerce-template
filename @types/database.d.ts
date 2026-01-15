@@ -1,60 +1,62 @@
-// Database entities matching Supabase schema
-declare interface Product {
-	id: string;
-	name: string;
-	description?: string;
-	price_lovelace: number;
-	stock: number;
-	is_active: boolean;
-	deleted_at?: string;
-	created_at: string;
-	updated_at: string;
-}
+declare namespace Database {
+	type OrderStatus = 'pending' | 'payment_failed' | 'paid' | 'processing' | 'shipped' | 'completed' | 'cancelled';
 
-declare interface ProductImage {
-	id: string;
-	product_id: string;
-	url: string;
-	alt?: string;
-	sort_order: number;
-	deleted_at?: string;
-	created_at: string;
-	updated_at: string;
-}
+	interface Product {
+		id: string;
+		name: string;
+		description: string | null;
+		price_lovelace: number;
+		stock: number;
+		is_active: boolean;
+		is_featured: boolean;
+		created_at: string;
+		updated_at: string;
+		deleted_at: string | null;
+		product_images: ProductImage[] | null;
+	}
 
-declare interface Order {
-	id: string;
-	customer_email?: string;
-	status: OrderStatus;
-	total_lovelace: number;
-	wallet_address?: string;
-	transaction_hash?: string;
-	deleted_at?: string;
-	created_at: string;
-	updated_at: string;
-}
+	interface ProductImage {
+		id: string;
+		product_id: string;
+		image_url: string;
+		alt_text: string | null;
+		display_order: number;
+		created_at: string;
+	}
 
-declare interface OrderItem {
-	id: string;
-	order_id: string;
-	product_id: string;
-	quantity: number;
-	price_lovelace: number;
-	token_policy_id?: string;
-	token_asset_name?: string;
-}
+	interface Order {
+		id: string;
+		wallet_address: string;
+		total_lovelace: number;
+		status: OrderStatus;
+		cardano_tx_hash: string | null;
+		payment_error: string | null;
+		is_timeout: boolean;
+		retry_count: number;
+		can_cancel: boolean;
+		order_items: OrderItem[] | null;
+		created_at: string;
+		updated_at: string;
+		deleted_at: string | null;
+	}
 
-declare interface SupportedToken {
-	id: string;
-	policy_id: string;
-	asset_name: string;
-	display_name: string;
-	symbol: string;
-	decimals: number;
-	is_active: boolean;
-	deleted_at?: string;
-	created_at: string;
-	updated_at: string;
-}
+	interface OrderItem {
+		id: string;
+		order_id: string;
+		product_id: string;
+		products: Product | null;
+		quantity: number;
+		price_lovelace: number;
+		created_at: string;
+	}
 
-declare type OrderStatus = 'pending' | 'paid' | 'failed' | 'cancelled' | 'refunded';
+	interface CreateOrderData {
+		wallet_address: string;
+		items: {
+			product_id: string;
+			quantity: number;
+			price_lovelace: number;
+		}[];
+		total_lovelace: number;
+	}
+}

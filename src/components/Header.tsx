@@ -5,11 +5,15 @@ import { useState } from 'react';
 // Config
 import { brandConfig } from '@/config/brand';
 
+// Hooks
+import { useCart } from '@/hooks/use-cart';
+
 // Lib
 import { cn } from '@/lib/utils';
 
 export default function Header() {
 	const [isOpen, setIsOpen] = useState(false);
+	const { itemCount } = useCart();
 
 	return (
 		<>
@@ -68,16 +72,18 @@ export default function Header() {
 							<Link
 								to="/checkout"
 								className="group relative p-2 hover:bg-blue-800/30 rounded-lg transition-all duration-200"
-								aria-label="Shopping cart with 0 items"
+								aria-label={`Shopping cart with ${itemCount} items`}
 							>
 								<IconShoppingCart
 									size={20}
 									className="text-blue-100 group-hover:text-white transition-colors duration-200"
 								/>
 								{/* Animated Badge */}
-								<span className="absolute -top-1 -right-1 bg-linear-to-r from-red-500 to-red-600 text-white text-xs font-bold rounded-full min-w-5 h-5 flex items-center justify-center px-1.5 shadow-md group-hover:shadow-lg transition-all duration-200">
-									0
-								</span>
+								{itemCount > 0 && (
+									<span className="absolute -top-1 -right-1 bg-linear-to-r from-red-500 to-red-600 text-white text-xs font-bold rounded-full min-w-5 h-5 flex items-center justify-center px-1.5 shadow-md group-hover:shadow-lg transition-all duration-200">
+										{itemCount > 99 ? '99+' : itemCount}
+									</span>
+								)}
 							</Link>
 						</div>
 					</div>

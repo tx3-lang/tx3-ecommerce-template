@@ -4,6 +4,33 @@
 
 This document outlines the complete technical specification for integrating Supabase with the existing Cardano e-commerce application. The implementation focuses on a local-first cart strategy with Supabase for product catalog and order management.
 
+## Design Decisions
+
+### Timestamp Strategy: timestamptz vs timestamp
+
+**Decision**: Using `timestamptz` (timezone-aware timestamps) instead of `timestamp`.
+
+**Rationale**:
+- **Global Payments**: Cardano transactions are timestamped in UTC, requiring timezone awareness
+- **Multi-regional Users**: E-commerce serves customers across different timezones
+- **Audit Trail**: Payment timeouts and order tracking need precise temporal accuracy
+- **Blockchain Integration**: Consistency with Cardano's UTC-based block timestamps
+
+**Evolution from previous spec**:
+- Previous design (`000-ecommerce-cardano.md`) used simple `timestamp`
+- This spec upgrades to `timestamptz` for production-grade e-commerce requirements
+- Change documented here to maintain historical traceability
+
+### Local-First Cart Architecture
+
+**Decision**: Shopping cart persists in localStorage with React Query cache for stock validation.
+
+**Benefits**:
+- Offline capability and instant UX
+- Reduced database load
+- Better performance for high-traffic scenarios
+- Graceful handling of network interruptions
+
 ## Architecture Decisions
 
 ### Core Principles
@@ -539,5 +566,10 @@ supabase gen types typescript --local > @types/database.ts
 - Database query optimization
 
 ---
+
+## Version History
+
+- **v1.0** (2024-01-14): Initial specification with timestamptz timestamp strategy
+- **Evolved from**: `000-ecommerce-cardano.md` - Enhanced with local-first cart, payment timeouts, and production-grade timestamp handling
 
 This specification provides a comprehensive foundation for implementing Supabase integration with best practices in type safety, performance, and user experience. The local-first cart strategy ensures excellent UX while maintaining data consistency through React Query and proper stock validation.

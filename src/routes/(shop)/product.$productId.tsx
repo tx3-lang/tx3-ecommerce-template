@@ -1,61 +1,139 @@
-import { IconShield, IconShoppingCart, IconStar, IconStarHalf, IconTruck } from '@tabler/icons-react';
+import { IconShield, IconShoppingCart, IconTruck } from '@tabler/icons-react';
 import { createFileRoute } from '@tanstack/react-router';
 import { useId } from 'react';
+import { useCart } from '@/hooks/use-cart';
+// Hooks
+import { useProduct } from '@/hooks/use-products';
 
 // Helpers
 import { generateProductMetaTags } from '@/lib/seo';
+import { getSupabaseConfig } from '@/lib/supabase-seo';
 
 export const Route = createFileRoute('/(shop)/product/$productId')({
 	component: ProductDetail,
-	head: ({ params }) => {
-		// Mock product data - in real app this would come from API
-		const mockProduct = {
-			name: 'Premium Wireless Headphones',
-			price: 85.5,
-			description:
-				'Experience crystal-clear audio with our premium wireless headphones. Featuring active noise cancellation, 30-hour battery life, and premium comfort for all-day wear.',
-			image: '/products/headphones.jpg',
-			category: 'Electronics',
-		};
+	loader: async ({ params: { productId } }) => {
+		try {
+			// Get Supabase config server-side
+			const { supabaseUrl, supabaseAnonKey } = await getSupabaseConfig();
 
-		const metaTags = generateProductMetaTags({
-			name: mockProduct.name,
-			description: mockProduct.description,
-			price: mockProduct.price,
-			image: mockProduct.image,
-			category: mockProduct.category,
-			productId: params.productId,
-		});
+			// Fetch minimal SEO data server-side
+			const supabase = await import('@supabase/supabase-js').then(m => m.createClient(supabaseUrl, supabaseAnonKey));
 
-		return {
-			meta: metaTags,
-		};
+			const { data, error } = await supabase
+				.from('products')
+				.select(`
+					name,
+					description,
+					price_lovelace,
+					product_images (image_url, alt_text, display_order)
+				`)
+				.eq('id', productId)
+				.eq('is_active', true)
+				.single();
+
+			if (error) {
+				// Return null for 404 cases, let component handle it
+				if (error.code === 'PGRST116') {
+					return { seoData: null };
+				}
+				throw error;
+			}
+
+			return { seoData: data };
+		} catch (error) {
+			// Fallback if server-side fetch fails
+			console.error('Failed to fetch SEO data:', error);
+			return { seoData: null };
+		}
+	},
+	head: ({ loaderData, params }) => {
+		const { seoData } = loaderData || {};
+
+		if (seoData) {
+			const priceInAda = seoData.price_lovelace / 1_000_000;
+			// Get the first image if available, otherwise use placeholder
+			const productImage = seoData.product_images?.[0]?.image_url || '/images/product-placeholder.jpg';
+
+			const metaTags = generateProductMetaTags({
+				name: seoData.name,
+				description: seoData.description || 'Premium product available on our e-commerce platform',
+				price: priceInAda,
+				image: productImage,
+				category: 'General',
+				productId: params.productId,
+			});
+
+			return {
+				meta: metaTags,
+			};
+		}
+
+		return {};
 	},
 });
 
 function ProductDetail() {
 	const quantityId = useId();
 	const { productId } = Route.useParams();
+	const { data: product, isLoading, error } = useProduct(productId);
+	const { addItem } = useCart();
 
-	// Mock data - this would come from API based on productId
-	const mockProduct = {
-		id: productId,
-		name: 'Premium Wireless Headphones',
-		price: 85.5,
-		description:
-			'Experience crystal-clear audio with our premium wireless headphones. Featuring active noise cancellation, 30-hour battery life, and premium comfort for all-day wear.',
-		stock: 15,
-		category: 'Electronics',
-		rating: 4.5,
-		reviews: 128,
-		features: [
-			'Active Noise Cancellation',
-			'30-hour battery life',
-			'Bluetooth 5.0 connectivity',
-			'Premium memory foam cushions',
-			'Foldable design',
-			'Built-in microphone',
-		],
+	// Loading state
+	if (isLoading) {
+		return (
+			<div className="container mx-auto px-4 py-8">
+				<div className="animate-pulse">
+					<div className="mb-8">
+						<div className="h-8 bg-gray-200 rounded w-48 mb-4"></div>
+						<div className="h-4 bg-gray-200 rounded w-96"></div>
+					</div>
+					<div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16">
+						<div className="w-full aspect-square bg-gray-200 rounded-lg"></div>
+						<div className="space-y-4">
+							<div className="h-8 bg-gray-200 rounded w-3/4"></div>
+							<div className="h-4 bg-gray-200 rounded w-full"></div>
+							<div className="h-4 bg-gray-200 rounded w-2/3"></div>
+							<div className="h-8 bg-gray-200 rounded w-1/2 mt-8"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
+	// Error state
+	if (error || !product) {
+		return (
+			<div className="container mx-auto px-4 py-8">
+				<div className="text-center">
+					<h1 className="text-3xl font-bold text-gray-900 mb-4">Product Not Found</h1>
+					<p className="text-gray-600 mb-8">The product you're looking for doesn't exist or has been removed.</p>
+					<a
+						href="/products"
+						className="inline-flex items-center px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+					>
+						Back to Products
+					</a>
+				</div>
+			</div>
+		);
+	}
+
+	const handleAddToCart = () => {
+		addItem(product.id, 1);
+	};
+
+	const priceInAda = product.price_lovelace / 1_000_000;
+
+	// Get emoji for product based on name
+	const getProductEmoji = (name: string) => {
+		if (name.toLowerCase().includes('headphone')) return '🎧';
+		if (name.toLowerCase().includes('watch')) return '⌚';
+		if (name.toLowerCase().includes('coffee')) return '☕';
+		if (name.toLowerCase().includes('chair')) return '🪑';
+		if (name.toLowerCase().includes('yoga')) return '🧘';
+		if (name.toLowerCase().includes('charging')) return '🔋';
+		return '📦';
 	};
 
 	return (
@@ -75,7 +153,7 @@ function ProductDetail() {
 						</a>
 					</li>
 					<li>/</li>
-					<li className="text-gray-900">{mockProduct.name}</li>
+					<li className="text-gray-900">{product.name}</li>
 				</ol>
 			</nav>
 
@@ -85,50 +163,40 @@ function ProductDetail() {
 					<div className="w-full aspect-square bg-gray-100 rounded-lg overflow-hidden">
 						<div className="w-full h-full bg-linear-to-br from-gray-200 to-gray-300 flex items-center justify-center">
 							<div className="text-center">
-								<div className="text-4xl mb-2">🎧</div>
+								<div className="text-6xl mb-2">{getProductEmoji(product.name)}</div>
 								<p className="text-gray-600">Product Image</p>
+								{product.product_images && product.product_images.length > 0 && (
+									<p className="text-xs text-gray-500 mt-2">{product.product_images[0].alt_text}</p>
+								)}
 							</div>
 						</div>
 					</div>
-					<div className="grid grid-cols-4 gap-2">
-						<div className="aspect-square bg-gray-100 rounded-md cursor-pointer hover:ring-2 hover:ring-primary"></div>
-						<div className="aspect-square bg-gray-100 rounded-md cursor-pointer hover:ring-2 hover:ring-primary"></div>
-						<div className="aspect-square bg-gray-100 rounded-md cursor-pointer hover:ring-2 hover:ring-primary"></div>
-						<div className="aspect-square bg-gray-100 rounded-md cursor-pointer hover:ring-2 hover:ring-primary"></div>
-					</div>
+					{product.product_images && product.product_images.length > 1 && (
+						<div className="grid grid-cols-4 gap-2">
+							{product.product_images.slice(0, 4).map((image: Database.ProductImage) => (
+								<div
+									key={image.id}
+									className="aspect-square bg-gray-100 rounded-md cursor-pointer hover:ring-2 hover:ring-primary"
+								></div>
+							))}
+						</div>
+					)}
 				</div>
 
 				{/* Product Info */}
 				<div className="space-y-6">
 					<div>
-						<span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full mb-2">
-							{mockProduct.category}
-						</span>
-						<h1 className="text-3xl font-bold text-gray-900 mb-4">{mockProduct.name}</h1>
+						<h1 className="text-3xl font-bold text-gray-900 mb-4">{product.name}</h1>
 
-						{/* Rating */}
-						<div className="flex items-center space-x-2 mb-4">
-							<div className="flex">
-								<IconStar size={20} className="text-yellow-400 fill-current" />
-								<IconStar size={20} className="text-yellow-400 fill-current" />
-								<IconStar size={20} className="text-yellow-400 fill-current" />
-								<IconStar size={20} className="text-yellow-400 fill-current" />
-								<IconStarHalf size={20} className="text-yellow-400 fill-current" />
-							</div>
-							<span className="text-gray-600">
-								{mockProduct.rating} ({mockProduct.reviews} reviews)
-							</span>
-						</div>
-
-						<p className="text-lg text-gray-700 leading-relaxed mb-6">{mockProduct.description}</p>
+						<p className="text-lg text-gray-700 leading-relaxed mb-6">{product.description}</p>
 					</div>
 
 					{/* Price and Actions */}
 					<div className="border-t border-b border-gray-200 py-6">
 						<div className="flex items-baseline mb-6">
-							<span className="text-3xl font-bold text-gray-900">{mockProduct.price} ADA</span>
-							{mockProduct.stock > 0 ? (
-								<span className="ml-4 text-sm text-green-600 font-medium">{mockProduct.stock} in stock</span>
+							<span className="text-3xl font-bold text-gray-900">{priceInAda.toFixed(2)} ADA</span>
+							{product.stock > 0 ? (
+								<span className="ml-4 text-sm text-green-600 font-medium">{product.stock} in stock</span>
 							) : (
 								<span className="ml-4 text-sm text-red-600 font-medium">Out of stock</span>
 							)}
@@ -140,7 +208,7 @@ function ProductDetail() {
 									Quantity:
 								</label>
 								<div className="flex items-center border border-gray-300 rounded-lg">
-									<button type="button" className="p-2 hover:bg-gray-100">
+									<button type="button" className="p-2 hover:bg-gray-100 cursor-pointer">
 										-
 									</button>
 									<input
@@ -149,7 +217,7 @@ function ProductDetail() {
 										value="1"
 										className="w-16 text-center border-x border-gray-300 py-2"
 									/>
-									<button type="button" className="p-2 hover:bg-gray-100">
+									<button type="button" className="p-2 hover:bg-gray-100 cursor-pointer">
 										+
 									</button>
 								</div>
@@ -164,26 +232,15 @@ function ProductDetail() {
 								</button>
 								<button
 									type="button"
-									className="flex-1 px-6 py-3 border border-primary text-primary rounded-lg hover:bg-primary/10 transition-colors font-medium flex items-center justify-center"
+									onClick={handleAddToCart}
+									disabled={product.stock === 0}
+									className="flex-1 px-6 py-3 border border-primary text-primary rounded-lg hover:bg-primary/10 transition-colors font-medium flex items-center justify-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
 								>
 									<IconShoppingCart size={20} className="mr-2" />
 									Add to Cart
 								</button>
 							</div>
 						</div>
-					</div>
-
-					{/* Features */}
-					<div className="space-y-4">
-						<h3 className="text-lg font-semibold text-gray-900 mb-3">Key Features</h3>
-						<ul className="space-y-2">
-							{mockProduct.features.map((feature) => (
-								<li key={feature} className="flex items-center text-gray-700">
-									<div className="w-2 h-2 bg-primary rounded-full mr-3"></div>
-									{feature}
-								</li>
-							))}
-						</ul>
 					</div>
 
 					{/* Benefits */}
@@ -211,20 +268,20 @@ function ProductDetail() {
 			<div className="border-t border-gray-200 pt-8">
 				<div className="border-b border-gray-200 mb-8">
 					<nav className="-mb-px flex space-x-8">
-						<button type="button" className="border-b-2 border-primary text-primary py-2 px-1 font-medium text-sm">
+						<button type="button" className="border-b-2 border-primary text-primary py-2 px-1 font-medium text-sm cursor-pointer">
 							Description
 						</button>
 						<button
 							type="button"
-							className="border-b-2 border-transparent text-gray-500 hover:text-gray-700 py-2 px-1 font-medium text-sm"
+							className="border-b-2 border-transparent text-gray-500 hover:text-gray-700 py-2 px-1 font-medium text-sm cursor-pointer"
 						>
 							Specifications
 						</button>
 						<button
 							type="button"
-							className="border-b-2 border-transparent text-gray-500 hover:text-gray-700 py-2 px-1 font-medium text-sm"
+							className="border-b-2 border-transparent text-gray-500 hover:text-gray-700 py-2 px-1 font-medium text-sm cursor-pointer"
 						>
-							Reviews ({mockProduct.reviews})
+							Reviews
 						</button>
 					</nav>
 				</div>
@@ -233,19 +290,17 @@ function ProductDetail() {
 					<div>
 						<h3 className="text-xl font-semibold text-gray-900 mb-4">Product Description</h3>
 						<div className="prose max-w-none text-gray-700">
-							<p className="mb-4">{mockProduct.description}</p>
+							<p className="mb-4">{product.description}</p>
 							<p className="mb-4">
-								Our premium wireless headphones are designed for audiophiles who demand the best in sound quality and
-								comfort. With advanced noise cancellation technology, you can immerse yourself in your music without
-								distractions.
+								This premium product is designed with quality and functionality in mind. With careful attention to
+								detail and high-quality materials, it provides an excellent user experience.
 							</p>
 							<h4 className="text-lg font-semibold text-gray-900 mb-2">What's in the box:</h4>
 							<ul className="list-disc pl-6 space-y-1">
-								<li>Premium Wireless Headphones</li>
-								<li>USB-C Charging Cable</li>
-								<li>3.5mm Audio Cable</li>
-								<li>Carrying Case</li>
-								<li>Quick Start Guide</li>
+								<li>Premium Product</li>
+								<li>User Manual</li>
+								<li>Warranty Card</li>
+								<li>Packaging</li>
 							</ul>
 						</div>
 					</div>
