@@ -58,7 +58,7 @@ function Checkout() {
 						<p className="text-muted-foreground mb-4">Connect your Cardano wallet to complete the payment.</p>
 						<button
 							type="button"
-							className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+							className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors cursor-pointer"
 						>
 							Connect Wallet
 						</button>
