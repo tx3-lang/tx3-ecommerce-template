@@ -37,7 +37,7 @@ This document outlines the complete technical specification for integrating Supa
 - **Local Cart**: Shopping cart persists in localStorage for offline support and instant UX
 - **Stock Strategy**: Use React Query cache for stock validation, real-time validation only at checkout
 - **Payment Flow**: Multi-step checkout process with wallet connection as a dedicated step
-- **Type Safety**: PostgreSQL enums for order status, generated TypeScript types for database
+- **Type Safety**: PostgreSQL enums for order status
 - **Timeout Handling**: 60-second timeout for Cardano payments (3 blocks)
 
 ### Technology Stack
@@ -131,20 +131,6 @@ USING (is_active = true AND deleted_at IS NULL);
 CREATE POLICY "Users can manage own orders" ON orders FOR ALL 
 USING (wallet_address = current_setting('app.current_wallet', true));
 ```
-
-### Type Generation
-
-Run this command after migration:
-
-```bash
-# Generate types to @types directory
-supabase gen types typescript --local > @types/database.ts
-```
-
-The generated types should include:
-- `order_status` enum type
-- Product, ProductImage, Order, OrderItem interfaces
-- Database row/insert/update types
 
 ## File Structure
 
@@ -456,8 +442,7 @@ export async function processCardanoPayment(
 ### Phase 1: Database Setup (2 hours)
 1. Create migration file with schema
 2. Run migration in Supabase
-3. Generate TypeScript types
-4. Verify RLS policies work correctly
+3. Verify RLS policies work correctly
 
 ### Phase 2: Cart System (3 hours)
 1. Implement cart storage system
@@ -543,12 +528,6 @@ Run migration in this order:
 1. Development: `supabase db push`
 2. Staging: `supabase db push --remote staging`
 3. Production: `supabase db push --remote production`
-
-### Type Generation
-Generate types after each schema change:
-```bash
-supabase gen types typescript --local > @types/database.ts
-```
 
 ## Future Enhancements
 
