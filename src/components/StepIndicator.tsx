@@ -10,7 +10,7 @@ interface StepIndicatorProps {
 
 export function StepIndicator({ current, steps }: StepIndicatorProps) {
 	const getCurrentIndex = () => {
-		return steps.findIndex((step) => step.id === current);
+		return steps.findIndex(step => step.id === current);
 	};
 
 	const currentIndex = getCurrentIndex();

@@ -1,69 +1,60 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useId } from 'react';
+
+// Components
+import { CheckoutFlow } from '@/components/CheckoutFlow';
+
+// Hooks
+import { useCart } from '@/hooks/use-cart';
 
 export const Route = createFileRoute('/(shop)/checkout')({
 	component: Checkout,
 });
 
 function Checkout() {
-	const emailId = useId();
+	const { isEmpty, isLoaded } = useCart();
 
-	return (
-		<div className="p-8">
-			<h1 className="text-3xl font-bold mb-6">Checkout</h1>
-			<p className="text-muted-foreground mb-8">Complete your purchase with Cardano wallet payment.</p>
+	// Show loading skeleton while cart is loading
+	if (!isLoaded) {
+		return (
+			<div className="bg-gray-50 min-h-screen">
+				<title>Loading Checkout...</title>
+				<meta name="description" content="Loading checkout" />
+				<div className="container mx-auto px-4 py-8">
+					<CheckoutFlow />
+				</div>
+			</div>
+		);
+	}
 
-			<div className="max-w-2xl mx-auto">
-				<div className="space-y-6">
-					{/* Order Summary */}
-					<div className="border rounded-lg p-6">
-						<h2 className="text-xl font-semibold mb-4">Order Summary</h2>
-						<div className="space-y-2 mb-4">
-							<div className="flex justify-between">
-								<span>Product 1</span>
-								<span>50 ADA</span>
-							</div>
-							<div className="flex justify-between">
-								<span>Product 2</span>
-								<span>30 ADA</span>
-							</div>
-							<div className="border-t pt-2 flex justify-between font-bold">
-								<span>Total</span>
-								<span>80 ADA</span>
-							</div>
-						</div>
-					</div>
-
-					{/* Customer Information */}
-					<div className="border rounded-lg p-6">
-						<h2 className="text-xl font-semibold mb-4">Contact Information</h2>
-						<div className="space-y-4">
-							<div>
-								<label htmlFor={emailId} className="block text-sm font-medium mb-2">
-									Email (optional)
-								</label>
-								<input
-									type="email"
-									id={emailId}
-									className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-									placeholder="your@email.com"
-								/>
-							</div>
-						</div>
-					</div>
-
-					{/* Payment */}
-					<div className="border rounded-lg p-6">
-						<h2 className="text-xl font-semibold mb-4">Payment</h2>
-						<p className="text-muted-foreground mb-4">Connect your Cardano wallet to complete the payment.</p>
-						<button
-							type="button"
-							className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors cursor-pointer"
+	// Check if cart has items before allowing checkout
+	if (isEmpty) {
+		return (
+			<div className="container mx-auto px-4 py-8">
+				<div className="max-w-2xl mx-auto text-center">
+					<h1 className="text-3xl font-bold mb-6">Checkout</h1>
+					<div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+						<p className="text-yellow-800 mb-4">
+							Your cart is empty. Please add items to your cart before proceeding to checkout.
+						</p>
+						<a
+							href="/products"
+							className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
 						>
-							Connect Wallet
-						</button>
+							Continue Shopping
+						</a>
 					</div>
 				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div className="bg-gray-50 min-h-screen">
+			<title>Checkout - Complete Your Order</title>
+			<meta name="description" content="Complete your purchase with our secure checkout process" />
+
+			<div className="container mx-auto px-4 py-8">
+				<CheckoutFlow />
 			</div>
 		</div>
 	);

@@ -2,6 +2,15 @@ export interface CartItem {
 	productId: string;
 	quantity: number;
 	addedAt: number;
+	product: {
+		id: string;
+		name: string;
+		description: string | null;
+		price_lovelace: number;
+		stock: number;
+		image_url?: string;
+	};
+	subtotal: number;
 }
 
 export interface CartStorage {
@@ -31,7 +40,14 @@ export function getCart(): CartStorage | null {
 		}
 
 		// Filter out invalid items
-		cart.items = cart.items.filter(item => item.productId && typeof item.quantity === 'number' && item.quantity > 0);
+		cart.items = cart.items.filter(
+			item =>
+				item.productId &&
+				typeof item.quantity === 'number' &&
+				item.quantity > 0 &&
+				item.product &&
+				item.product.id === item.productId,
+		);
 
 		return cart;
 	} catch (error) {

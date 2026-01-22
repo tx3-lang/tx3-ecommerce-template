@@ -2,6 +2,9 @@ import { IconMenu2, IconPackage, IconShoppingCart, IconX } from '@tabler/icons-r
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 
+// Components
+import { MiniCart } from '@/components/cart/MiniCart';
+
 // Config
 import { brandConfig } from '@/config/brand';
 
@@ -13,6 +16,7 @@ import { cn } from '@/lib/utils';
 
 export default function Header() {
 	const [isOpen, setIsOpen] = useState(false);
+	const [isMiniCartOpen, setIsMiniCartOpen] = useState(false);
 	const { itemCount } = useCart();
 
 	return (
@@ -23,7 +27,7 @@ export default function Header() {
 					type="button"
 					className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden cursor-default"
 					onClick={() => setIsOpen(false)}
-					onKeyDown={(e) => e.key === 'Escape' && setIsOpen(false)}
+					onKeyDown={e => e.key === 'Escape' && setIsOpen(false)}
 					aria-label="Close mobile menu"
 				/>
 			)}
@@ -69,8 +73,9 @@ export default function Header() {
 
 						{/* Right: Cart */}
 						<div className="flex items-center">
-							<Link
-								to="/checkout"
+							<button
+								type="button"
+								onClick={() => setIsMiniCartOpen(!isMiniCartOpen)}
 								className="group relative p-2 hover:bg-blue-800/30 rounded-lg transition-all duration-200"
 								aria-label={`Shopping cart with ${itemCount} items`}
 							>
@@ -84,7 +89,10 @@ export default function Header() {
 										{itemCount > 99 ? '99+' : itemCount}
 									</span>
 								)}
-							</Link>
+							</button>
+
+							{/* MiniCart Dropdown */}
+							<MiniCart isOpen={isMiniCartOpen} onClose={() => setIsMiniCartOpen(false)} />
 						</div>
 					</div>
 				</div>

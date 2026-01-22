@@ -45,7 +45,7 @@ export function useCheckout() {
 		[wallet],
 	);
 
-	const createOrder = useCallback(async (orderData: CreateOrderRequest): Promise<Order | null> => {
+	const createOrder = useCallback(async (orderData: CreateOrderRequest): Promise<Database.Order | null> => {
 		try {
 			// TODO: Implement order creation with Supabase
 			console.log('Creating order:', orderData);

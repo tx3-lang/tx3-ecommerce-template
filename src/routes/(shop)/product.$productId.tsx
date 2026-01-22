@@ -1,11 +1,17 @@
 import { IconShield, IconShoppingCart, IconTruck } from '@tabler/icons-react';
 import { createFileRoute } from '@tanstack/react-router';
-import { useId } from 'react';
-import { useCart } from '@/hooks/use-cart';
+import { useEffect, useId, useState } from 'react';
+
+// Components
+import { QuantitySelector } from '@/components/ui/quantity-selector';
+
 // Hooks
+import { useCart } from '@/hooks/use-cart';
 import { useProduct } from '@/hooks/use-products';
 
-// Helpers
+// Lib
+import { ADA_SYMBOL, formatLovelaceToAda } from '@/lib/ada-formatter';
+import type { CartItem } from '@/lib/cart-storage';
 import { generateProductMetaTags } from '@/lib/seo';
 import { getSupabaseConfig } from '@/lib/supabase-seo';
 
@@ -76,7 +82,26 @@ function ProductDetail() {
 	const quantityId = useId();
 	const { productId } = Route.useParams();
 	const { data: product, isLoading, error } = useProduct(productId);
-	const { addItem } = useCart();
+	const { addItem, getItemQuantity, updateProductStock } = useCart();
+	const [quantity, setQuantity] = useState(1);
+
+	const currentProductQuantity = getItemQuantity(productId);
+	const maxQuantity = product ? product.stock - currentProductQuantity : 1;
+
+	// Update cart item stock when product data loads
+	useEffect(() => {
+		if (product && currentProductQuantity > 0) {
+			// Check if this product is in the cart and update its stock
+			const cart = JSON.parse(localStorage.getItem('ecommerce-cart') || '{}');
+			if (cart.items) {
+				const cartItem = cart.items.find((item: CartItem) => item.productId === productId);
+				if (cartItem && cartItem.product.stock !== product.stock) {
+					// Update the stock in the cart item
+					updateProductStock(productId, product.stock);
+				}
+			}
+		}
+	}, [product, productId, currentProductQuantity, updateProductStock]);
 
 	// Loading state
 	if (isLoading) {
@@ -120,21 +145,10 @@ function ProductDetail() {
 	}
 
 	const handleAddToCart = () => {
-		addItem(product.id, 1);
+		addItem(product.id, quantity, product);
 	};
 
-	const priceInAda = product.price_lovelace / 1_000_000;
-
-	// Get emoji for product based on name
-	const getProductEmoji = (name: string) => {
-		if (name.toLowerCase().includes('headphone')) return '🎧';
-		if (name.toLowerCase().includes('watch')) return '⌚';
-		if (name.toLowerCase().includes('coffee')) return '☕';
-		if (name.toLowerCase().includes('chair')) return '🪑';
-		if (name.toLowerCase().includes('yoga')) return '🧘';
-		if (name.toLowerCase().includes('charging')) return '🔋';
-		return '📦';
-	};
+	const priceInAdaString = formatLovelaceToAda(product.price_lovelace, 2);
 
 	return (
 		<div className="container mx-auto px-4 py-8">
@@ -163,7 +177,7 @@ function ProductDetail() {
 					<div className="w-full aspect-square bg-gray-100 rounded-lg overflow-hidden">
 						<div className="w-full h-full bg-linear-to-br from-gray-200 to-gray-300 flex items-center justify-center">
 							<div className="text-center">
-								<div className="text-6xl mb-2">{getProductEmoji(product.name)}</div>
+								<div className="text-6xl mb-2">📦</div>
 								<p className="text-gray-600">Product Image</p>
 								{product.product_images && product.product_images.length > 0 && (
 									<p className="text-xs text-gray-500 mt-2">{product.product_images[0].alt_text}</p>
@@ -176,7 +190,7 @@ function ProductDetail() {
 							{product.product_images.slice(0, 4).map((image: Database.ProductImage) => (
 								<div
 									key={image.id}
-									className="aspect-square bg-gray-100 rounded-md cursor-pointer hover:ring-2 hover:ring-primary"
+									className="aspect-square bg-gray-100 rounded-md hover:ring-2 hover:ring-primary"
 								></div>
 							))}
 						</div>
@@ -194,7 +208,7 @@ function ProductDetail() {
 					{/* Price and Actions */}
 					<div className="border-t border-b border-gray-200 py-6">
 						<div className="flex items-baseline mb-6">
-							<span className="text-3xl font-bold text-gray-900">{priceInAda.toFixed(2)} ADA</span>
+							<span className="text-3xl font-bold text-gray-900">{priceInAdaString}</span>
 							{product.stock > 0 ? (
 								<span className="ml-4 text-sm text-green-600 font-medium">{product.stock} in stock</span>
 							) : (
@@ -207,20 +221,14 @@ function ProductDetail() {
 								<label htmlFor="quantity" className="text-sm font-medium text-gray-700">
 									Quantity:
 								</label>
-								<div className="flex items-center border border-gray-300 rounded-lg">
-									<button type="button" className="p-2 hover:bg-gray-100 cursor-pointer">
-										-
-									</button>
-									<input
-										id={quantityId}
-										type="number"
-										value="1"
-										className="w-16 text-center border-x border-gray-300 py-2"
-									/>
-									<button type="button" className="p-2 hover:bg-gray-100 cursor-pointer">
-										+
-									</button>
-								</div>
+								<QuantitySelector
+									id={quantityId}
+									value={quantity}
+									onChange={setQuantity}
+									min={1}
+									max={maxQuantity}
+									size="md"
+								/>
 							</div>
 
 							<div className="flex space-x-4">
@@ -233,8 +241,8 @@ function ProductDetail() {
 								<button
 									type="button"
 									onClick={handleAddToCart}
-									disabled={product.stock === 0}
-									className="flex-1 px-6 py-3 border border-primary text-primary rounded-lg hover:bg-primary/10 transition-colors font-medium flex items-center justify-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+									disabled={maxQuantity === 0}
+									className="flex-1 px-6 py-3 border border-primary text-primary rounded-lg hover:bg-primary/10 transition-colors font-medium flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
 								>
 									<IconShoppingCart size={20} className="mr-2" />
 									Add to Cart
@@ -248,7 +256,7 @@ function ProductDetail() {
 						<div className="text-center p-4">
 							<IconTruck size={32} className="mx-auto mb-2 text-primary" />
 							<p className="text-sm font-medium text-gray-900">Free Shipping</p>
-							<p className="text-xs text-gray-600">Orders over 100 ADA</p>
+							<p className="text-xs text-gray-600">Orders over 100 {ADA_SYMBOL}</p>
 						</div>
 						<div className="text-center p-4">
 							<IconShield size={32} className="mx-auto mb-2 text-primary" />
@@ -268,18 +276,18 @@ function ProductDetail() {
 			<div className="border-t border-gray-200 pt-8">
 				<div className="border-b border-gray-200 mb-8">
 					<nav className="-mb-px flex space-x-8">
-						<button type="button" className="border-b-2 border-primary text-primary py-2 px-1 font-medium text-sm cursor-pointer">
+						<button type="button" className="border-b-2 border-primary text-primary py-2 px-1 font-medium text-sm">
 							Description
 						</button>
 						<button
 							type="button"
-							className="border-b-2 border-transparent text-gray-500 hover:text-gray-700 py-2 px-1 font-medium text-sm cursor-pointer"
+							className="border-b-2 border-transparent text-gray-500 hover:text-gray-700 py-2 px-1 font-medium text-sm"
 						>
 							Specifications
 						</button>
 						<button
 							type="button"
-							className="border-b-2 border-transparent text-gray-500 hover:text-gray-700 py-2 px-1 font-medium text-sm cursor-pointer"
+							className="border-b-2 border-transparent text-gray-500 hover:text-gray-700 py-2 px-1 font-medium text-sm"
 						>
 							Reviews
 						</button>
