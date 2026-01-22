@@ -1,6 +1,9 @@
 import { IconCheck, IconClock, IconPackage } from '@tabler/icons-react';
 import { createFileRoute } from '@tanstack/react-router';
 
+// Components
+import { Spinner } from '@/components/ui/spinner';
+
 // Hooks
 import { useOrder } from '@/hooks/use-orders';
 
@@ -19,7 +22,7 @@ function OrderConfirmation() {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
 				<div className="text-center">
-					<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+					<Spinner className="size-12 mx-auto mb-4" />
 					<p className="text-gray-600">Loading order details...</p>
 				</div>
 			</div>
@@ -90,7 +93,7 @@ function OrderConfirmation() {
 							<h2 className="text-lg font-semibold mb-4">Order Items</h2>
 
 							<div className="space-y-4">
-								{order.order_items?.map((item) => (
+								{order.order_items?.map(item => (
 									<div key={item.id} className="flex items-center space-x-4 pb-4 border-b last:border-0">
 										<div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
 											<IconPackage className="w-8 h-8 text-gray-600" />
@@ -104,7 +107,7 @@ function OrderConfirmation() {
 										</div>
 
 										<div className="text-right">
-											<p className="font-semibold">{formatLovelaceToAda(item.price_lovelace)}</p>
+											<p className="font-semibold">{formatLovelaceToAda(item.price_lovelace, 2)}</p>
 											<p className="text-sm text-gray-600">each</p>
 										</div>
 									</div>
@@ -121,7 +124,7 @@ function OrderConfirmation() {
 							<div className="space-y-3">
 								<div className="flex justify-between text-sm">
 									<span className="text-gray-600">Subtotal</span>
-									<span className="font-medium">{formatLovelaceToAda(order.total_lovelace)}</span>
+									<span className="font-medium">{formatLovelaceToAda(order.total_lovelace, 2)}</span>
 								</div>
 
 								<div className="flex justify-between text-sm">
@@ -132,7 +135,7 @@ function OrderConfirmation() {
 								<div className="border-t pt-3">
 									<div className="flex justify-between">
 										<span className="font-semibold">Total</span>
-										<span className="font-bold text-lg">{formatLovelaceToAda(order.total_lovelace)}</span>
+										<span className="font-bold text-lg">{formatLovelaceToAda(order.total_lovelace, 2)}</span>
 									</div>
 								</div>
 							</div>
@@ -182,7 +185,7 @@ function OrderConfirmation() {
 							<button
 								type="button"
 								onClick={() => window.print()}
-								className="flex-1 inline-flex items-center justify-center px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors cursor-pointer"
+								className="flex-1 inline-flex items-center justify-center px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
 							>
 								Print Receipt
 							</button>

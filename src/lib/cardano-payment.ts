@@ -8,11 +8,12 @@ export interface PaymentResult {
 export interface PaymentRequest {
 	amount: number; // in lovelace
 	recipient: string;
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 // Merchant address - this should be configurable via environment variables
-const _MERCHANT_ADDRESS = import.meta.env.VITE_MERCHANT_ADDRESS || '';
+// TODO: Use this merchant address in payment processing
+// const MERCHANT_ADDRESS = import.meta.env.VITE_MERCHANT_ADDRESS || '';
 
 // Timeout configuration
 const CARDANO_PAYMENT_TIMEOUT = 60000; // 60 seconds = 3 Cardano blocks
@@ -29,7 +30,7 @@ export async function processCardanoPayment(
 		// For now, simulate payment processing
 		console.log(`Processing payment for order ${order.id}: ${order.total_lovelace} lovelace`);
 
-		const paymentPromise = new Promise<string>((resolve) => {
+		const paymentPromise = new Promise<string>(resolve => {
 			setTimeout(() => resolve('mock-tx-hash'), 2000);
 		});
 
@@ -59,7 +60,7 @@ export async function validatePayment(_txHash: string, _expectedAmount: number, 
 		// 5. Verify the transaction is confirmed
 
 		// Simulate API call delay
-		await new Promise((resolve) => setTimeout(resolve, 2000));
+		await new Promise(resolve => setTimeout(resolve, 2000));
 
 		// Simulate successful validation for demo purposes
 		// In production, this would be actual blockchain validation

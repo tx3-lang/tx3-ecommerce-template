@@ -1,49 +1,51 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
-import {
-	type CartItem,
-	type CartStorage,
-	clearCart,
-	createEmptyCart,
-	getCart,
-	getItemQuantity,
-	saveCart,
-} from '../lib/cart-storage';
+// Contexts
+import { useCartContext } from '@/contexts/CartContext';
 
-export interface ExtendedCartItem extends CartItem {
-	product: Database.Product;
-	subtotal: number;
-}
+// Lib
+import type { CartItem } from '@/lib/cart-storage';
 
 export interface CartHook {
-	items: ExtendedCartItem[];
-	addItem: (productId: string, quantity: number) => void;
+	items: CartItem[];
+	addItem: (productId: string, quantity: number, product: Database.Product) => void;
 	removeItem: (productId: string) => void;
 	updateQuantity: (productId: string, quantity: number) => void;
+	updateProductStock: (productId: string, newStock: number) => void;
 	clear: () => void;
+	refresh: () => void;
 	total: number;
+	subtotal: number;
+	shippingEstimate: number;
 	itemCount: number;
 	isEmpty: boolean;
+	isLoaded: boolean;
+	getItemQuantity: (productId: string) => number;
+	hasItem: (productId: string) => boolean;
+	getTotalItems: () => number;
+	clearErrors: () => void;
 }
 
 export function useCart(): CartHook {
-	const queryClient = useQueryClient();
-
-	const cart = useMemo(() => {
-		return getCart() || createEmptyCart();
-	}, []);
-
-	const products = queryClient.getQueryData<Database.Product[]>(['products']) || [];
+	const {
+		items: cartItems,
+		addItem: contextAddItem,
+		removeItem: contextRemoveItem,
+		updateQuantity: contextUpdateQuantity,
+		updateProductStock: contextUpdateProductStock,
+		clear: contextClear,
+		refresh: contextRefresh,
+		isLoaded,
+	} = useCartContext();
 
 	const validateStock = useCallback(
-		(productId: string, newQuantity: number) => {
-			const product = products.find(p => p.id === productId);
+		(productId: string, newQuantity: number, product: CartItem['product']) => {
 			if (!product) {
 				throw new Error('Product not found');
 			}
 
-			const existingQuantity = getItemQuantity(productId);
+			const existingItem = cartItems.find(item => item.productId === productId);
+			const existingQuantity = existingItem ? existingItem.quantity : 0;
 			const totalQuantity = existingQuantity + newQuantity;
 
 			if (totalQuantity > product.stock) {
@@ -52,49 +54,35 @@ export function useCart(): CartHook {
 
 			return true;
 		},
-		[products],
+		[cartItems],
 	);
 
-	const persistCart = useCallback((updatedCart: CartStorage) => {
-		saveCart(updatedCart);
-	}, []);
-
 	const addItem = useCallback(
-		(productId: string, quantity: number) => {
+		(productId: string, quantity: number, product: Database.Product) => {
 			if (quantity <= 0) {
 				throw new Error('Quantity must be greater than 0');
 			}
 
-			validateStock(productId, quantity);
+			const customProduct: CartItem['product'] = {
+				id: product.id,
+				name: product.name,
+				description: product.description,
+				price_lovelace: product.price_lovelace,
+				stock: product.stock,
+				image_url: product.product_images?.[0]?.image_url,
+			};
 
-			const updatedCart = getCart() || createEmptyCart();
-
-			const existingItemIndex = updatedCart.items.findIndex(item => item.productId === productId);
-
-			if (existingItemIndex >= 0) {
-				updatedCart.items[existingItemIndex].quantity += quantity;
-			} else {
-				updatedCart.items.push({
-					productId,
-					quantity,
-					addedAt: Date.now(),
-				});
-			}
-
-			persistCart(updatedCart);
+			validateStock(productId, quantity, customProduct);
+			contextAddItem(productId, quantity, customProduct);
 		},
-		[validateStock, persistCart],
+		[validateStock, contextAddItem],
 	);
 
 	const removeItem = useCallback(
 		(productId: string) => {
-			const updatedCart = getCart() || createEmptyCart();
-
-			updatedCart.items = updatedCart.items.filter(item => item.productId !== productId);
-
-			persistCart(updatedCart);
+			contextRemoveItem(productId);
 		},
-		[persistCart],
+		[contextRemoveItem],
 	);
 
 	const updateQuantity = useCallback(
@@ -104,71 +92,97 @@ export function useCart(): CartHook {
 				return;
 			}
 
-			validateStock(productId, quantity - getItemQuantity(productId));
-
-			const updatedCart = getCart() || createEmptyCart();
-
-			const itemIndex = updatedCart.items.findIndex(item => item.productId === productId);
-
-			if (itemIndex >= 0) {
-				updatedCart.items[itemIndex].quantity = quantity;
-				persistCart(updatedCart);
+			const existingItem = cartItems.find(item => item.productId === productId);
+			if (!existingItem) {
+				throw new Error('Item not found in cart');
 			}
+
+			const existingQuantity = existingItem ? existingItem.quantity : 0;
+
+			validateStock(productId, quantity - existingQuantity, existingItem.product);
+			contextUpdateQuantity(productId, quantity);
 		},
-		[validateStock, removeItem, persistCart],
+		[validateStock, contextUpdateQuantity, removeItem, cartItems],
 	);
 
 	const clear = useCallback(() => {
-		clearCart();
+		contextClear();
+	}, [contextClear]);
+
+	const refresh = useCallback(() => {
+		contextRefresh();
+	}, [contextRefresh]);
+
+	const cartMetrics = useMemo(() => {
+		let total = 0;
+		let itemCount = 0;
+		const itemMap = new Map<string, CartItem>();
+
+		const processedItems = cartItems
+			.map(item => {
+				if (!item.product) return null;
+				const subtotal = item.quantity * item.product.price_lovelace;
+				total += subtotal;
+				itemCount += item.quantity;
+				itemMap.set(item.productId, item);
+				return { ...item, subtotal } as CartItem;
+			})
+			.filter((item): item is CartItem => item !== null)
+			.sort((a, b) => b.addedAt - a.addedAt);
+
+		return {
+			items: processedItems,
+			total,
+			itemCount,
+			itemMap,
+		};
+	}, [cartItems]);
+
+	const subtotal = cartMetrics.total; // No additional taxes or discounts yet
+
+	const shippingEstimate = 0;
+
+	const isEmpty = cartMetrics.items.length === 0;
+
+	const getItemQuantity = useCallback(
+		(productId: string) => cartMetrics.itemMap.get(productId)?.quantity ?? 0,
+		[cartMetrics.itemMap],
+	);
+
+	const hasItem = useCallback((productId: string) => cartMetrics.itemMap.has(productId), [cartMetrics.itemMap]);
+
+	const getTotalItems = useCallback(() => {
+		return cartMetrics.itemCount;
+	}, [cartMetrics.itemCount]);
+
+	const updateProductStock = useCallback(
+		(productId: string, newStock: number) => {
+			contextUpdateProductStock(productId, newStock);
+		},
+		[contextUpdateProductStock],
+	);
+
+	const clearErrors = useCallback(() => {
+		// Clear any error states related to cart operations
 	}, []);
 
-	const extendedItems = useMemo(() => {
-		return cart.items
-			.map(item => {
-				const product = products.find(p => p.id === item.productId);
-				if (!product) return null;
-
-				return {
-					...item,
-					product,
-					subtotal: item.quantity * product.price_lovelace,
-				} as ExtendedCartItem;
-			})
-			.filter((item): item is ExtendedCartItem => item !== null)
-			.sort((a, b) => b.addedAt - a.addedAt);
-	}, [cart.items, products]);
-
-	const total = useMemo(() => {
-		return extendedItems.reduce((sum, item) => sum + item.subtotal, 0);
-	}, [extendedItems]);
-
-	const itemCount = useMemo(() => {
-		return extendedItems.reduce((sum, item) => sum + item.quantity, 0);
-	}, [extendedItems]);
-
-	const isEmpty = useMemo(() => {
-		return extendedItems.length === 0;
-	}, [extendedItems]);
-
-	useEffect(() => {
-		const handleStorageChange = (e: StorageEvent) => {
-			if (e.key === 'ecommerce-cart') {
-				queryClient.invalidateQueries({ queryKey: ['cart'] });
-			}
-		};
-
-		window.addEventListener('storage', handleStorageChange);
-		return () => window.removeEventListener('storage', handleStorageChange);
-	}, [queryClient]);
-
 	return {
-		items: extendedItems,
+		items: cartMetrics.items,
 		addItem,
 		removeItem,
 		updateQuantity,
+		updateProductStock,
 		clear,
-		total,
-		itemCount,
+		refresh,
+		total: cartMetrics.total,
+		subtotal,
+		shippingEstimate,
+		itemCount: cartMetrics.itemCount,
 		isEmpty,
+		isLoaded,
+		getItemQuantity,
+		hasItem,
+		getTotalItems,
+		clearErrors,
 	};
 }

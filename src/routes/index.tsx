@@ -3,8 +3,12 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 
 // Components
 import { ProductCard } from '@/components/ProductCard';
+
+// Hooks
+import { useCart } from '@/hooks/use-cart';
+
+// Lib
 import { getFeaturedProducts } from '@/lib/products';
-// Helpers
 import { generateMetaTags } from '@/lib/seo';
 
 export const Route = createFileRoute('/')({
@@ -19,6 +23,8 @@ export const Route = createFileRoute('/')({
 });
 
 function HomePage() {
+	const { addItem } = useCart();
+
 	const {
 		data: featuredProducts = [],
 		isLoading,
@@ -29,7 +35,7 @@ function HomePage() {
 	});
 
 	const handleAddToCart = (product: Database.Product) => {
-		console.log(`Adding ${product.name} to cart`);
+		addItem(product.id, 1, product);
 	};
 
 	if (isLoading) {

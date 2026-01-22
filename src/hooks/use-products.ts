@@ -28,7 +28,7 @@ export function useProducts() {
 
 // Single product
 export function useProduct(productId: string) {
-	return useQuery({
+	return useQuery<Database.Product>({
 		queryKey: ['product', productId],
 		queryFn: async () => {
 			const { data, error } = await supabase

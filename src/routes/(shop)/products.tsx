@@ -13,10 +13,10 @@ export const Route = createFileRoute('/(shop)/products')({
 
 function ProductsPage() {
 	const { data: products, isLoading, error } = useProducts();
-	const { addItem } = useCart();
+	const { addItem, getItemQuantity } = useCart();
 
 	const handleAddToCart = (product: Database.Product) => {
-		addItem(product.id, 1);
+		addItem(product.id, 1, product);
 	};
 
 	// Loading state
@@ -69,6 +69,7 @@ function ProductsPage() {
 						variant="detailed"
 						showAddToCart={true}
 						onAddToCart={handleAddToCart}
+						itemsInCart={getItemQuantity(product.id)}
 					/>
 				))}
 			</div>

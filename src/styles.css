@@ -2,8 +2,6 @@
 
 @import 'tw-animate-css';
 
-@import "tw-animate-css";
-
 @import "shadcn/tailwind.css";
 
 @import "@fontsource-variable/inter";
@@ -216,5 +214,17 @@ code {
   }
   html {
     @apply font-sans;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+@layer utilities {
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    @apply appearance-none;
   }
 }

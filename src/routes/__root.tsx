@@ -7,6 +7,7 @@ import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools';
 // Components
 import Footer from '@/components/Footer';
 import Header from '@/components/Header';
+import { CartProvider } from '@/contexts/CartContext';
 
 // Helpers
 import { generateMetaTags } from '@/lib/seo';
@@ -55,25 +56,27 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				<HeadContent />
 			</head>
 			<body className="flex flex-col min-h-screen">
-				<Header />
-				<main className="flex-1">{children}</main>
-				<Footer />
-				<TanStackDevtools
-					config={{
-						position: 'bottom-right',
-					}}
-					plugins={[
-						{
-							name: 'Tanstack Router',
-							render: <TanStackRouterDevtoolsPanel />,
-						},
-						{
-							name: 'React Query',
-							render: <ReactQueryDevtoolsPanel />,
-						},
-					]}
-				/>
-				<Scripts />
+				<CartProvider>
+					<Header />
+					<main className="flex-1">{children}</main>
+					<Footer />
+					<TanStackDevtools
+						config={{
+							position: 'bottom-right',
+						}}
+						plugins={[
+							{
+								name: 'Tanstack Router',
+								render: <TanStackRouterDevtoolsPanel />,
+							},
+							{
+								name: 'React Query',
+								render: <ReactQueryDevtoolsPanel />,
+							},
+						]}
+					/>
+					<Scripts />
+				</CartProvider>
 			</body>
 		</html>
 	);

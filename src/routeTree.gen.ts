@@ -15,6 +15,7 @@ import { Route as ApiProductsRouteImport } from './routes/api/products'
 import { Route as ApiOrdersRouteImport } from './routes/api/orders'
 import { Route as shopProductsRouteImport } from './routes/(shop)/products'
 import { Route as shopCheckoutRouteImport } from './routes/(shop)/checkout'
+import { Route as shopCartRouteImport } from './routes/(shop)/cart'
 import { Route as shopProductProductIdRouteImport } from './routes/(shop)/product.$productId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -48,6 +49,11 @@ const shopCheckoutRoute = shopCheckoutRouteImport.update({
   path: '/checkout',
   getParentRoute: () => rootRouteImport,
 } as any)
+const shopCartRoute = shopCartRouteImport.update({
+  id: '/(shop)/cart',
+  path: '/cart',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const shopProductProductIdRoute = shopProductProductIdRouteImport.update({
   id: '/(shop)/product/$productId',
   path: '/product/$productId',
@@ -56,6 +62,7 @@ const shopProductProductIdRoute = shopProductProductIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/cart': typeof shopCartRoute
   '/checkout': typeof shopCheckoutRoute
   '/products': typeof shopProductsRoute
   '/api/orders': typeof ApiOrdersRoute
@@ -65,6 +72,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/cart': typeof shopCartRoute
   '/checkout': typeof shopCheckoutRoute
   '/products': typeof shopProductsRoute
   '/api/orders': typeof ApiOrdersRoute
@@ -75,6 +83,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/(shop)/cart': typeof shopCartRoute
   '/(shop)/checkout': typeof shopCheckoutRoute
   '/(shop)/products': typeof shopProductsRoute
   '/api/orders': typeof ApiOrdersRoute
@@ -86,6 +95,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/cart'
     | '/checkout'
     | '/products'
     | '/api/orders'
@@ -95,6 +105,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/cart'
     | '/checkout'
     | '/products'
     | '/api/orders'
@@ -104,6 +115,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/(shop)/cart'
     | '/(shop)/checkout'
     | '/(shop)/products'
     | '/api/orders'
@@ -114,6 +126,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  shopCartRoute: typeof shopCartRoute
   shopCheckoutRoute: typeof shopCheckoutRoute
   shopProductsRoute: typeof shopProductsRoute
   ApiOrdersRoute: typeof ApiOrdersRoute
@@ -166,6 +179,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof shopCheckoutRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/(shop)/cart': {
+      id: '/(shop)/cart'
+      path: '/cart'
+      fullPath: '/cart'
+      preLoaderRoute: typeof shopCartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(shop)/product/$productId': {
       id: '/(shop)/product/$productId'
       path: '/product/$productId'
@@ -178,6 +198,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  shopCartRoute: shopCartRoute,
   shopCheckoutRoute: shopCheckoutRoute,
   shopProductsRoute: shopProductsRoute,
   ApiOrdersRoute: ApiOrdersRoute,

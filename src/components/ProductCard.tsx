@@ -1,5 +1,7 @@
 import { IconShoppingCart } from '@tabler/icons-react';
 import { Link } from '@tanstack/react-router';
+
+// Lib
 import { formatLovelaceToAda } from '@/lib/ada-formatter';
 
 export interface ProductCardProps {
@@ -7,9 +9,16 @@ export interface ProductCardProps {
 	variant?: 'simple' | 'detailed';
 	showAddToCart?: boolean;
 	onAddToCart?: (product: Database.Product) => void;
+	itemsInCart?: number;
 }
 
-export function ProductCard({ product, variant = 'simple', showAddToCart = false, onAddToCart }: ProductCardProps) {
+export function ProductCard({
+	product,
+	variant = 'simple',
+	showAddToCart = false,
+	onAddToCart,
+	itemsInCart = 0,
+}: ProductCardProps) {
 	const handleAddToCart = (e: React.MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
@@ -28,7 +37,7 @@ export function ProductCard({ product, variant = 'simple', showAddToCart = false
 	const isOutOfStock = product.stock === 0;
 
 	const cardContent = (
-		<div className="border rounded-lg p-4 hover:shadow-lg transition-shadow duration-300 cursor-pointer">
+		<div className="border rounded-lg p-4 hover:shadow-lg transition-shadow duration-300">
 			{/* Product Image */}
 			<div className="w-full h-48 bg-gray-100 rounded-lg mb-4 flex items-center justify-center group-hover:bg-gray-50 transition-colors overflow-hidden">
 				{productImage.startsWith('http') ? (
@@ -64,7 +73,9 @@ export function ProductCard({ product, variant = 'simple', showAddToCart = false
 			{variant === 'simple' && (
 				<div className="flex justify-between items-center">
 					<span className="font-bold">{priceInAdaString}</span>
-					<span className="px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors text-sm">View</span>
+					<span className="px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors text-sm">
+						View
+					</span>
 				</div>
 			)}
 
@@ -72,8 +83,8 @@ export function ProductCard({ product, variant = 'simple', showAddToCart = false
 				<button
 					type="button"
 					onClick={handleAddToCart}
-					className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium flex items-center justify-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-					disabled={isOutOfStock}
+					className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+					disabled={isOutOfStock || itemsInCart >= product.stock}
 				>
 					<IconShoppingCart size={18} className="mr-2" />
 					{isOutOfStock ? 'Out of Stock' : 'Add to Cart'}

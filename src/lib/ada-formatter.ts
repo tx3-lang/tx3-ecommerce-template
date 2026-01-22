@@ -5,7 +5,7 @@
  * These utilities help convert between the two units with proper formatting
  */
 
-const ADA_SYMBOL = '₳';
+export const ADA_SYMBOL = '₳';
 
 /**
  * Convert lovelace to ADA with proper decimal formatting
@@ -113,14 +113,12 @@ export const ADA_IN_LOVELACE = 1_000_000;
 export function formatLovelaceAsCurrency(lovelace: number, locale: string = 'en-US'): string {
 	const ada = lovelace / 1_000_000;
 
-	return (
-		new Intl.NumberFormat(locale, {
-			style: 'currency',
-			currency: ADA_SYMBOL,
-			minimumFractionDigits: 6,
-			maximumFractionDigits: 6,
-		})
-			.format(ada)
-			.trim()
-	);
+	return new Intl.NumberFormat(locale, {
+		style: 'currency',
+		currency: ADA_SYMBOL,
+		minimumFractionDigits: 6,
+		maximumFractionDigits: 6,
+	})
+		.format(ada)
+		.trim();
 }

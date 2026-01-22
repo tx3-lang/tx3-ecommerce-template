@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 
+// Lib
+import { getAvailableWallets } from '@/lib/cardano';
+
 export function useWallet() {
 	const [wallet, setWallet] = useState<CardanoWalletAPI | null>(null);
 	const [connecting, setConnecting] = useState(false);
@@ -41,7 +44,6 @@ export function useWallet() {
 	const availableWallets = () => {
 		if (typeof window === 'undefined') return [];
 
-		const { getAvailableWallets } = require('../lib/cardano');
 		return getAvailableWallets();
 	};
 

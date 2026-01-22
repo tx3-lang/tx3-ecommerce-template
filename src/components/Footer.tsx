@@ -22,29 +22,29 @@ export default function Footer() {
 							<div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">📦</div>
 							<h3 className="text-lg font-bold">{brandConfig.business.name}</h3>
 						</div>
-						<p className="text-gray-400 text-sm mb-2">Tu tienda de confianza para comprar con criptomonedas</p>
+						<p className="text-gray-400 text-sm mb-2">Your trusted store for shopping with cryptocurrencies</p>
 						<p className="text-gray-400 text-sm">{brandConfig.business.address}</p>
 					</div>
 
 					{/* Quick Links */}
 					<div>
-						<h4 className="text-lg font-semibold mb-4">Enlaces Rápidos</h4>
+						<h4 className="text-lg font-semibold mb-4">Quick Links</h4>
 						<nav className="space-y-2">
 							<Link to="/" className="block text-gray-400 hover:text-white transition-colors text-sm">
-								Inicio
+								Home
 							</Link>
 							<Link to="/products" className="block text-gray-400 hover:text-white transition-colors text-sm">
-								Productos
+								Products
 							</Link>
-							<Link to="/checkout" className="block text-gray-400 hover:text-white transition-colors text-sm">
-								Carrito
+							<Link to="/cart" className="block text-gray-400 hover:text-white transition-colors text-sm">
+								Cart
 							</Link>
 						</nav>
 					</div>
 
 					{/* Contact Info */}
 					<div>
-						<h4 className="text-lg font-semibold mb-4">Contacto</h4>
+						<h4 className="text-lg font-semibold mb-4">Contact</h4>
 						<div className="space-y-3">
 							<div className="flex items-center gap-3 text-gray-400 text-sm">
 								<IconMail size={16} />
@@ -78,7 +78,7 @@ export default function Footer() {
 
 					{/* Social Media */}
 					<div>
-						<h4 className="text-lg font-semibold mb-4">Síguenos</h4>
+						<h4 className="text-lg font-semibold mb-4">Follow Us</h4>
 						<div className="flex space-x-4">
 							{brandConfig.contact.social?.twitter && (
 								<a
@@ -117,7 +117,7 @@ export default function Footer() {
 				{/* Bottom Bar */}
 				<div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400 text-sm">
 					<p>
-						&copy; {new Date().getFullYear()} {brandConfig.business.name}. Todos los derechos reservados.
+						&copy; {new Date().getFullYear()} {brandConfig.business.name}. All rights reserved.
 					</p>
 				</div>
 			</div>
