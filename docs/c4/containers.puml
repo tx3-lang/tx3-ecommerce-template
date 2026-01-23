@@ -1,0 +1,47 @@
+@startuml
+' ===================================================================
+' C4 Container Diagram for Ecommerce Whitelabel Platform
+' ===================================================================
+' Level 2: Container Diagram - Shows the high-level technology building blocks
+' ===================================================================
+
+!include <C4/C4_Container>
+!include c4-styles.puml
+
+' Title
+title Container Diagram - Ecommerce Whitelabel Platform
+
+' Persons
+CUSTOMER(customer, "Customer")
+ADMIN(admin, "Administrator")
+
+' System Boundary
+System_Boundary(ecommerce_boundary, "Ecommerce Whitelabel Platform") {
+    
+    ' Containers
+    FRONTEND(web_app, "Web Application", "Main storefront interface for customers")
+    CART_SERVICE(cart_service, "Cart Service", "Local-first shopping cart management")
+    PAYMENT_SERVICE(payment_service, "Payment Service", "Cardano blockchain payment processing")
+    DATABASE(database, "Database", "Stores products, orders, and customer data")
+}
+
+' External Systems
+SUPABASE(supabase_system, "Supabase")
+CARDANO(cardano_system, "Cardano Network")
+WALLETS(wallet_system, "Wallet Providers")
+
+' Relationships
+USES_HTTPS(customer, web_app, "Uses")
+Rel(web_app, cart_service, "Manages cart", "React Context")
+Rel(web_app, payment_service, "Process payments", "Cardano CIP-30")
+Rel(web_app, database, "CRUD operations", "Supabase Client")
+Rel(cart_service, database, "Validate stock", "React Query")
+Rel(payment_service, cardano_system, "Submit transactions", "Blockchain")
+Rel(payment_service, wallet_system, "Connect wallets", "CIP-30")
+MANAGES(admin, database, "Manage content")
+Rel_Back(database, supabase_system, "Hosted on", "PostgreSQL")
+
+' Legend
+SHOW_LEGEND()
+
+@enduml

@@ -1,0 +1,34 @@
+@startuml
+' ===================================================================
+' C4 Context Diagram for Ecommerce Whitelabel Platform
+' ===================================================================
+' Level 1: System Context - Shows the system as a black box
+' ===================================================================
+
+!include <C4/C4_Context>
+!include c4-styles.puml
+
+' Title
+title Context Diagram - Ecommerce Whitelabel Platform
+
+' Persons
+CUSTOMER(customer, "Customer")
+ADMIN(admin, "Administrator")
+
+' Systems
+ECOMMERCE(ecommerce_system, "Ecommerce Whitelabel")
+SUPABASE(supabase_system, "Supabase")
+CARDANO(cardano_system, "Cardano Network")
+WALLETS(wallet_system, "Wallet Providers")
+
+' Relationships
+USES_HTTPS(customer, ecommerce_system, "Uses")
+MANAGES(admin, supabase_system, "Manages")
+STORES_DATA(ecommerce_system, supabase_system, "Supabase")
+PROCESS_PAYMENT(ecommerce_system, cardano_system, "Cardano CIP-30")
+CONNECT_WALLET(ecommerce_system, wallet_system, "CIP-30")
+
+' Legend
+SHOW_LEGEND(true)
+
+@enduml
