@@ -5,8 +5,8 @@
 ' Level 3: Component Diagram - Shows the internal components of key containers
 ' ===================================================================
 
-!include <C4/C4_Component>
-!include c4-styles.puml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+!include https://raw.githubusercontent.com/tx3-lang/tx3-ecommerce-template/refs/heads/docs/diagrams/docs/c4/c4-styles.puml
 
 ' Title
 title Component Diagram - Ecommerce Whitelabel Platform

@@ -5,8 +5,8 @@
 ' Level 1: System Context - Shows the system as a black box
 ' ===================================================================
 
-!include <C4/C4_Context>
-!include c4-styles.puml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+!include https://raw.githubusercontent.com/tx3-lang/tx3-ecommerce-template/refs/heads/docs/diagrams/docs/c4/c4-styles.puml
 
 ' Title
 title Context Diagram - Ecommerce Whitelabel Platform
