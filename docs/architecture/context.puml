@@ -15,20 +15,34 @@ title Context Diagram - Ecommerce Whitelabel Platform
 CUSTOMER(customer, "Customer")
 ADMIN(admin, "Administrator")
 
-' Systems
-ECOMMERCE(ecommerce_system, "Ecommerce Whitelabel")
+' Systems (using shared definitions from c4-styles.puml)
+ECOMMERCE(ecommerce_system, "Ecommerce Whitelabel Platform")
 SUPABASE(supabase_system, "Supabase")
 CARDANO(cardano_system, "Cardano Network")
 WALLETS(wallet_system, "Wallet Providers")
+VERCEL(vercel_system, "Vercel")
 
-' Relationships
-USES_HTTPS(customer, ecommerce_system, "Uses")
-MANAGES(admin, supabase_system, "Manages")
-STORES_DATA(ecommerce_system, supabase_system, "Supabase")
+' Relationships (using shared definitions from c4-styles.puml)
+USES_HTTPS(customer, ecommerce_system, "Browse & purchase products")
+MANAGES(admin, supabase_system, "Manage products & orders")
+STORES_DATA(ecommerce_system, supabase_system, "Supabase Client")
 PROCESS_PAYMENT(ecommerce_system, cardano_system, "Cardano CIP-30")
 CONNECT_WALLET(ecommerce_system, wallet_system, "CIP-30")
+DEPLOYED_ON(ecommerce_system, vercel_system, "Hosted on", "Edge Functions")
+ACCESS_DATA(admin, vercel_system, "Deploy & monitor", "Dashboard")
+
+' System boundary grouping for better visual organization
+System_Boundary(infrastructure_boundary, "Cloud Infrastructure") {
+  SUPABASE(supabase_system, "Supabase")
+  VERCEL(vercel_system, "Vercel")
+}
+
+System_Boundary(blockchain_boundary, "Blockchain Ecosystem") {
+  CARDANO(cardano_system, "Cardano Network")
+  WALLETS(wallet_system, "Wallet Providers")
+}
 
 ' Legend
-SHOW_LEGEND(true)
+SHOW_LEGEND()
 
 @enduml

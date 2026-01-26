@@ -38,6 +38,7 @@ end title
 !define SUPABASE(systemAlias, systemLabel) System_Ext(systemAlias, systemLabel, "Cloud database and backend services")
 !define CARDANO(systemAlias, systemLabel) System_Ext(systemAlias, systemLabel, "Cardano blockchain network for payments")
 !define WALLETS(systemAlias, systemLabel) System_Ext(systemAlias, systemLabel, "Cardano wallet providers (Eternl, Lace)")
+!define VERCEL(systemAlias, systemLabel) System_Ext(systemAlias, systemLabel, "Edge cloud platform for frontend hosting")
 
 ' Common Container Definitions
 !define FRONTEND(containerAlias, containerLabel, containerDesc) Container(containerAlias, containerLabel, "TanStack Start, React, TypeScript", containerDesc)
@@ -63,6 +64,8 @@ end title
 !define STORES_DATA(from, to, tech) Rel(from, to, "Stores data", tech)
 !define PROCESS_PAYMENT(from, to, tech) Rel(from, to, "Process payments", tech)
 !define CONNECT_WALLET(from, to, tech) Rel(from, to, "Connect wallets", tech)
+!define DEPLOYED_ON(from, to, label, tech) Rel(from, to, label, tech)
+!define ACCESS_DATA(from, to, label, tech) Rel(from, to, label, tech)
 
 ' ===================================================================
 ' Helper Functions
