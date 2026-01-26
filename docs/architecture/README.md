@@ -2,8 +2,6 @@
 
 This directory contains the C4 model architecture diagrams for the whitelabel ecommerce platform built with Cardano blockchain payments.
 
-> **Note:** PlantUML diagrams are embedded directly in this README file using markdown code blocks. Most modern markdown viewers (including GitHub) can render these diagrams automatically. For local viewing, use a PlantUML renderer or IDE extension.
-
 ## 📋 Overview
 
 The C4 model is a simple and effective way to visualize software architecture. It consists of 4 levels of diagrams:
@@ -19,16 +17,20 @@ The C4 model is a simple and effective way to visualize software architecture. I
 ## 📁 File Structure
 
 ```
-docs/c4/
-├── README.md              # This file - guide and overview with inline diagrams
-└── c4-styles.puml         # Shared styles and definitions (referenced via GitHub URL)
+docs/architecture/
+├── README.md              # This file - guide and overview
+├── c4-styles.puml         # Reusable styles and definitions
+├── context.puml           # Level 1: System Context
+├── containers.puml        # Level 2: Container Diagram
+├── components.puml        # Level 3: Component Diagram
+└── database-schema.puml  # ER Diagram for Supabase
 ```
 
 **Diagram Rendering:** All diagrams are embedded directly in this README file for easier maintenance and viewing. Styles are centrally managed in `c4-styles.puml` and referenced via GitHub raw URL to avoid duplication and ensure consistency across all diagrams.
 
 ## 🎨 Diagram Descriptions
 
-### 1. Context Diagram
+### 1. Context Diagram (`context.puml`)
 **Purpose:** Shows the system as a black box and its interactions with external entities.
 
 **Key Elements:**
@@ -43,7 +45,7 @@ docs/c4/
 
 [![Context diagram](https://www.plantuml.com/plantuml/png/hLDTQzim57tthz3wCW_cUgDzAWogAQ8jn1z43c5FHhRLM5IsWdJTfFz-rt6QbZNR66i8ZdNlFKVdd4kkFKW7GsU2Z-JR_t-GXLqIPdjGEo0pBTTETkJUEi9hstNArOgiMWtAo4ePaXi9sEpUxVAvUaJQhrT4F7bGtL59H4Hhjvv0guYVMj8JIIeZwmTIsTqxAGW-wBusGwD82x3nLt7ivFPyhQ4Tgi6Z_L5F3-SOHhmniX-JZpmqHbSnkupoiRHCvd4dKQF3KdbmSBx1oNzXXzr5X6ph_Ojw3Zz2vtWlgDYfUn-tIZO-RcoDZsbNXrDzYLyKzcIKdwx6W0eDHWKmFj-iEFhBWX6UA-TjxmEs54MMy4LO3nuiGZwJCtPuFViKq5bobuQowNIF3Jh-QWzEWiKkyXnMwmFEiWHf60-FziffjuWxfGRXOfdJxrJmq0yRMKd_2Y4E5PnYT36ZQHRMqZMojoypR2gGLC7MkWSSNT7vd1SYt4fZ5BnChlPdaZlxg1iqFabVe13G64AhDpvO2YxAswB8nQieJdXPUZNY4vhI6owUetdh896zNEz7CU05SizeGK-4yqVl-I9ZN8WofpyIdXOduBzDXTtbqSMNCRyiJJahoYcS4nI_fdL4xl_2QzKtWRZDLkMSt_1q5e8R5FQkiJvqvYS0 "Context diagram")](./context.puml)
 
-### 2. Container Diagram
+### 2. Container Diagram (`containers.puml`)
 **Purpose:** Shows the high-level technology building blocks and how they interact.
 
 **Key Containers:**
@@ -56,7 +58,7 @@ docs/c4/
 
 [![Container diagram](https://www.plantuml.com/plantuml/png/hLHHRzis47xNh-3yKXUeus7DKu41LMIj2M0xgcNNs9D0KHU924KAv2cECUo_xoWfjk1a1OR5C2JUaVVTtVUT-DKXjzZMAlZ0Vl__FqA9hbbaD7AfmRA5vANbDNimbiN2r3LO0MnVIGJ5Sr0iKHnfitwtz4ju8jZVlhnHn8obbJauXXMmIfRLJ7Ld4KIbZJBbaUMjL8NK9SkL4O_kdOeAVf5QgBQWh8YD-pAVMtwuAYLMRTuwi88g1OrNnC-yKLnxEMOE2oNpUNGzIxnhjrhEQ-uGBBcoKszN3PtzB_Zu_7b6U6MtW1T5PWWrPKQOMtXmymfuuUQ54VJekHiiSKr_AksemFMfYQAjH0K1-kURfFzSTm98m3gZNH3jqktzAjvCHUlGKCWdDec6vUHZ42vMT-ifBsgfQIFqR-dGSZIqwt7IewC-s8rfTS7jCUZjxCMUdjhDyi55E3-jRlAH_HKm-dMF3-VsNEVuOtE_tiRhnVG0USQRXk3saBEmQPGK7ANH4tAjA89H5qIjfNWcDO9zu0Awh-AbLqSzUCmet6opDDxyk8lYgU0MCmVsIGhmP939qjxqo4iZk9ezIEkGkSeqZHzT7yDghda9DMWSO9FmprMyFYCt_4YxO_2azupnAL_1jUc_1b7vFeOurbWZm3bAE2HOXDlm9apZQS6HvznvoCMmz5Yf9y3vkA8Lw3unOmkmzEQwE970V301_ktbZ9yHhEPgqDK5wIxfKxYswN0pr-ruzC53iKJW8bpVJqLV_71crCqQy63i8ntTXyjbl4sd1wuKuFdalhDPOisJz4NsuxK1rMdgAjcuO9V6QNQxtIRfQ5pFSx1puCCevZmS5sgkEerSv_OCRO0Bx4OCdl4ozWszUWLUTjnOiEWkcNt-zH9Zf4oqsIsOQS3s7Kr65B98ISBhWoycS8JmWoj99Z27D1pd-h-tO8z3yAkYNscIjdajaQ7bsd5ngkNcD73_XdGf6T6cGU3Wxq1E9Ap2TVWjJeUhOzn4Bm4RBiW-LtR3nUDeYbyFswsXHS7whpiXexIGVb_sKxA44dGHfBVt-smPV_Et0_c_ag-jrJy0 "Container diagram")](./containers.puml)
 
-### 3. Component Diagram
+### 3. Component Diagram (`components.puml`)
 **Purpose:** Shows the internal components of the Web Application container.
 
 **Key Components:**
@@ -71,7 +73,7 @@ docs/c4/
 
 [![Component diagram](https://www.plantuml.com/plantuml/png/hLNHZzgu4txFN-7VlZILVfIJTfygdTGGie0EI4h2xcDaabbYhHD7jbEMEzt_VkF4sL38gRgxeeeouvdFCv-_cVsYD9MwARdpWVpwtp-8uZyGNvIrgA3IPCxeKTAIl0X9WaoK9SWCo7F1D71w04uYJZKUbZ_j-ZLyGzZxpoD5J4XSY9CYkW32AWsoefnaVPWYueMymXazbQQi0gb-Kb7E_rYLyIO7KcXTgy_JgQIdJqUcY-RGA93cGYpW4vOohJcjp7DCbCuvEqpzXqbaNFlDUbfIXKMZAttlxLEDiVy4Nx_TJn3lsFw0_aKc6agyMSDKmekQ5a1pDSr5XbyTTzRA7l0VbdRceBghaQA4QGwEDjzZfF_WtH4WGgf5fHn_7oVX9jYvMQEqm9J_aplV_hpxw7ZppMhhqhna5Hvuvd-cjAHQc5EZlFxXo4mqLKxbkTNTCno8LzUSPLGpKJdlOMaVvfxWaDAwJW_MWVXNMNSVoHyEmK_xzM5eLBMEQ1VEztwI-bxYhSE5MqkHDvbECPboSKIygFCGl_FSeMj3Ate4HMmmoPd2HpWJMkL40PLPWNqPz7WPHj5gkq3uNUAgGjGrguu8BZN2nDOcFje6Tua0777DEH4roBO3rUAYfP0rg3AmuFuoy7yBzqdwk0wVtQo0x5KqEdtXucJujpPvHBijkk6QJH2X9ZKzbyY0gJy3fInUk9i7ktJZRRr5i0csYIjaZboNRRCc7a52uoARTvS1JYJDNhiYIqjCczdZpdRUTfxwuVPnjN0F4kDI5FOBC-JEZ4dyrcowTWtaXTuwIR7VspEYpjX0QO6HrBct3TFLDWaMEozPXLiNgSjf9LAp9euTe26Zyv9LxxNNKCv1cxrHGMQSfecU7LF-dqQTSwhfWIeOPEhCKIqpBmxSt9uXM1zcW6EKDYY2y8GEKYGckbDyy6QtMDmsf9nu7tM8ggbRcBHhrO1P3sRQZlik-vYXmIteav2l6FhihTT14hkdjaSREVICglx6x2DXFJlWdTOALYjd7mTnkaoIABwOwDl9c4bSoj0V8D9uuhNiE_KGO_rToesOSMYnQhohmU7gk1XD797i4uFJ84ZdOWDSTOtMxVXVFF3N1kHvwFRxbp79LurUf3vHpj04WdLchoPr1pJJf8MqsLSzNxEs0Dtj1MRqCa0OKSAR7WSPduQe6_jUw0RBNqMJ-ryio0s9bwtuk_tSqdbBmTLutqh6BEOpqGMKs5fxSHoJ9oePFN1Geo3NHFmBY2jMVWnnEw4ZMXabzsOou-PGCaqq5gHerYAO6sSSXO1IPfMjU1JjUdZzRbDPl_hkvRh57Tk_iyEJ3GDdb59PfQGpNDhk47IxTfO2V-IasvGH6aS9yTTrnyuQZb3bJhmCdzDri0YsSnVzNz3NbFml "Component diagram")](./components.puml)
 
-### 4. Database Schema
+### 4. Database Schema (`database-schema.puml`)
 **Purpose:** Entity Relationship diagram showing the complete database structure.
 
 **Key Tables:**
@@ -140,33 +142,72 @@ docs/c4/
 - **Row Level Security** - User-restricted data access
 - **Optimized Indexes** - Performance for active/featured products
 
-## 🔄 Maintenance
+## 🔄 Maintenance Guide
 
-### Adding New Components
-1. Update component diagram section in this README with new component definitions
-2. Add relationships to existing components
-3. Update `c4-styles.puml` if new shared styles are needed
+### 📝 Updating Diagrams
 
-### Technology Changes
-1. Update container/component descriptions in respective diagram sections
-2. Modify technology labels in relationships within the inline diagrams
-3. Update the Technology Stack section below if changes are significant
+#### Adding New Components
+1. **Edit Component Diagram**: Update `components.puml` with new component definitions
+2. **Generate New URL**: Use PlantUML online editor to generate updated diagram URL
+3. **Update README**: Replace the diagram URL in the appropriate section
+4. **Add Component Definitions**: If reusable, add to `c4-styles.puml` under "Common Component Definitions"
+5. **Test Rendering**: Verify diagram displays correctly in markdown viewers
 
-### Brand Customization
-1. Modify colors in `c4-styles.puml` (changes apply to all diagrams automatically)
-2. Update legend and title configurations directly in the PlantUML code blocks
-3. Test rendering across different platforms (GitHub, IDEs, markdown viewers)
+#### Technology Stack Changes
+1. **Update Container Descriptions**: Modify technology labels in `containers.puml`
+2. **Update Component Details**: Edit component technologies in `components.puml`
+3. **Refresh Diagrams**: Generate new URLs for affected diagrams
+4. **Update Documentation**: Modify Technology Stack section if changes are significant
+5. **Update Relationships**: Adjust technology labels in relationship definitions
 
-### Diagram Updates
-- All diagrams are embedded in this README file but reference shared styles
-- Edit's the corresponding ```plantuml code block to make changes
-- Shared styles in `c4-styles.puml` are loaded via GitHub raw URL
-- Use PlantUML syntax and C4-PlantUML library functions for consistency
+#### Brand Customization
+1. **Color Scheme**: Modify colors in `c4-styles.puml` (lines 8-13)
+2. **Legend Updates**: Edit legend text in `c4-styles.puml` if needed
+3. **Title Configuration**: Update title/version in `c4-styles.puml` (lines 23-26)
+4. **Test All Diagrams**: Regenerate all diagram URLs to ensure consistency
+5. **Cross-Platform Testing**: Verify rendering in GitHub, IDEs, and documentation tools
 
-### Style Management
-- `c4-styles.puml` contains centralized styling for all diagrams
-- Changes to styles propagate automatically to all diagrams
-- Referenced via: `https://raw.githubusercontent.com/tx3-lang/tx3-ecommerce-template/refs/heads/docs/diagrams/docs/c4/c4-styles.puml`
+### 🛠️ Technical Workflow
+
+#### Step-by-Step Diagram Update Process
+1. **Edit Source File**: Modify the appropriate `.puml` file
+2. **Local Testing**: Use PlantUML local tool/online editor to verify syntax
+3. **Generate URL**: Create new PlantUML URL with updated code
+4. **Update README**: Replace the specific diagram URL
+5. **Commit Changes**: Save both `.puml` source and README updates
+6. **Verify Rendering**: Check that images display correctly after commit
+
+#### URL Generation
+- Use PlantUML online editor: https://www.plantuml.com/plantuml/uml/
+- Copy your `.puml` code and generate PNG/SVG URL
+- For PNG: `https://www.plantuml.com/plantuml/png/[encoded_code]`
+- For SVG: `https://www.plantuml.com/plantuml/svg/[encoded_code]`
+
+### 🎯 Best Practices
+
+#### Consistency Guidelines
+- **Use Shared Styles**: Always reference `c4-styles.puml` via URL in all diagrams
+- **Naming Convention**: Follow existing naming patterns for components/relationships
+- **Version Control**: Update version number in `c4-styles.puml` when making major changes
+- **Documentation**: Keep README descriptions in sync with diagram content
+
+#### Quality Assurance
+- **Syntax Validation**: Test PlantUML syntax before updating URLs
+- **Visual Review**: Ensure diagrams are readable and well-organized
+- **Link Testing**: Verify all diagram URLs render correctly
+- **Cross-Reference**: Check that component descriptions match across diagrams
+
+### 📁 File Dependencies
+
+```
+c4-styles.puml ← Referenced by all diagrams via GitHub raw URL
+├── context.puml → README.md (diagram URL)
+├── containers.puml → README.md (diagram URL)
+├── components.puml → README.md (diagram URL)
+└── database-schema.puml → README.md (diagram URL)
+```
+
+**Style Reference URL:** `https://raw.githubusercontent.com/tx3-lang/tx3-ecommerce-template/refs/heads/docs/diagrams/docs/architecture/c4-styles.puml`
 
 ## 📚 References
 
