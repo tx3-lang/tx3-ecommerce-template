@@ -6,7 +6,7 @@
 ' ===================================================================
 
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
-!include https://raw.githubusercontent.com/tx3-lang/tx3-ecommerce-template/refs/heads/docs/diagrams/docs/architecture/c4-styles.puml
+!include https://raw.githubusercontent.com/tx3-lang/tx3-ecommerce-template/main/docs/architecture/c4-styles.puml
 
 ' Title
 title Context Diagram - Ecommerce Whitelabel Platform
