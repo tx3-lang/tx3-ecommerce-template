@@ -1,0 +1,98 @@
+' ===================================================================
+' C4 Styles for Ecommerce Whitelabel Platform
+' ===================================================================
+' Custom styles and colors for the ecommerce whitelabel C4 diagrams
+' ===================================================================
+
+' Update Element Styles
+UpdateElementStyle("person", $bgColor="#FF6B35", $fontColor="#F7F7F7", $borderColor="#FF6B35", $shadowing="true", $legendText="Internal User")
+UpdateElementStyle("external_person", $bgColor="#666666", $fontColor="#F7F7F7", $borderColor="#666666", $legendText="External User")
+UpdateElementStyle("system", $bgColor="#0033AD", $fontColor="#F7F7F7", $borderColor="#0033AD", $legendText="Core System")
+UpdateElementStyle("external_system", $bgColor="#666666", $fontColor="#F7F7F7", $borderColor="#666666", $legendText="External System")
+UpdateElementStyle("container", $bgColor="#2E7D32", $fontColor="#F7F7F7", $borderColor="#2E7D32", $legendText="Application Container")
+UpdateElementStyle("container_db", $bgColor="#316192", $fontColor="#F7F7F7", $borderColor="#316192", $legendText="Database Container")
+
+' Update Relationship Styles
+UpdateRelStyle($lineColor="#999999", $textColor="#333333")
+
+' Layout Configuration
+LAYOUT_LEFT_RIGHT()
+LAYOUT_WITH_LEGEND()
+
+' Title Configuration
+title
+  Ecommerce Whitelabel Platform - C4 Architecture
+  v1.0.0
+end title
+
+' ===================================================================
+' Common Elements (can be reused across diagrams)
+' ===================================================================
+
+' Common Person Definitions
+!define CUSTOMER(personAlias, personLabel) Person(personAlias, personLabel, "Customer who buys products from the online store", $sprite="fa_user")
+!define ADMIN(personAlias, personLabel) Person(personAlias, personLabel, "Administrator who manages products and orders via Supabase", $sprite="fa_user_cog")
+
+' Common System Definitions  
+!define ECOMMERCE(systemAlias, systemLabel) System(systemAlias, systemLabel, "Whitelabel ecommerce platform for online sales")
+!define SUPABASE(systemAlias, systemLabel) System_Ext(systemAlias, systemLabel, "Cloud database and backend services")
+!define CARDANO(systemAlias, systemLabel) System_Ext(systemAlias, systemLabel, "Cardano blockchain network for payments")
+!define WALLETS(systemAlias, systemLabel) System_Ext(systemAlias, systemLabel, "Cardano wallet providers (Eternl, Lace)")
+!define VERCEL(systemAlias, systemLabel) System_Ext(systemAlias, systemLabel, "Edge cloud platform for frontend hosting")
+
+' Common Container Definitions
+!define FRONTEND(containerAlias, containerLabel, containerDesc) Container(containerAlias, containerLabel, "TanStack Start, React, TypeScript", containerDesc)
+!define CART_SERVICE(containerAlias, containerLabel, containerDesc) Container(containerAlias, containerLabel, "React Context, localStorage", containerDesc)
+!define PAYMENT_SERVICE(containerAlias, containerLabel, containerDesc) Container(containerAlias, containerLabel, "Cardano CIP-30, TypeScript", containerDesc)
+!define DATABASE(containerAlias, containerLabel, containerDesc) ContainerDb(containerAlias, containerLabel, "Supabase PostgreSQL", containerDesc)
+
+' Common Component Definitions
+!define PRODUCT_CATALOG(compAlias, compLabel, compDesc) Component(compAlias, compLabel, "React Query, TanStack Start", compDesc)
+!define SHOPPING_CART(compAlias, compLabel, compDesc) Component(compAlias, compLabel, "React Context, localStorage", compDesc)
+!define CHECKOUT_FLOW(compAlias, compLabel, compDesc) Component(compAlias, compLabel, "Multi-step React", compDesc)
+!define ORDER_MANAGEMENT(compAlias, compLabel, compDesc) Component(compAlias, compLabel, "React Query, Supabase", compDesc)
+!define BRAND_CONFIG(compAlias, compLabel, compDesc) Component(compAlias, compLabel, "CSS Variables, Config", compDesc)
+!define CARDANO_INTEGRATION(compAlias, compLabel, compDesc) Component(compAlias, compLabel, "CIP-30, TypeScript", compDesc)
+
+' ===================================================================
+' Common Relationships (can be reused across diagrams)
+' ===================================================================
+
+!define USES_HTTPS(from, to, label) Rel(from, to, label, "HTTPS")
+!define USES_API(from, to, label, tech) Rel(from, to, label, tech)
+!define MANAGES(from, to, label) Rel(from, to, label, "Dashboard")
+!define STORES_DATA(from, to, tech) Rel(from, to, "Stores data", tech)
+!define PROCESS_PAYMENT(from, to, tech) Rel(from, to, "Process payments", tech)
+!define CONNECT_WALLET(from, to, tech) Rel(from, to, "Connect wallets", tech)
+!define DEPLOYED_ON(from, to, label, tech) Rel(from, to, label, tech)
+!define ACCESS_DATA(from, to, label, tech) Rel(from, to, label, tech)
+
+' ===================================================================
+' Helper Functions
+' ===================================================================
+
+' Function to add floating legend with custom info
+!define CUSTOM_LEGEND(legendText)
+legend top right
+  ' +------------------------+
+  ' | **Legend**             |
+  ' +------------------------+
+  ' | **Colors:**            |
+  ' | 🟠 Orange - Users      |
+  ' | 🔵 Blue - Systems      |
+  ' | 🟢 Green - Apps        |
+  ' | ⚫ Dark Blue - DB      |
+  ' | ⚪ Gray - External     |
+  ' +------------------------+
+  ' | **Technologies:**      |
+  ' | • React/TypeScript     |
+  ' | • TanStack Start       |
+  ' | • Supabase PostgreSQL  |
+  ' | • Cardano CIP-30       |
+  ' +------------------------+
+  legendText
+end legend
+
+' ===================================================================
+' End of C4 Styles
+' ===================================================================

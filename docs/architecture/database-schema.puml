@@ -1,0 +1,144 @@
+@startuml
+' ===================================================================
+' Entity Relationship Diagram for Ecommerce Whitelabel Platform
+' ===================================================================
+' Database Schema - Supabase PostgreSQL 
+' ===================================================================
+
+' Title
+title Database Schema - Ecommerce Whitelabel Platform
+
+' Custom Colors for Database Elements
+skinparam class {
+    BackgroundColor<<Table>> #E3F2FD
+    BackgroundColor<<Enum>> #F3E5F5
+    BackgroundColor<<View>> #E8F5E8
+    BorderColor<<Table>> #1976D2
+    BorderColor<<Enum>> #7B1FA2
+    BorderColor<<View>> #388E3C
+    FontColor<<Table>> #0D47A1
+    FontColor<<Enum>> #4A148C
+    FontColor<<View>> #1B5E20
+}
+
+' Enum Type
+class order_status <<Enum>> {
+    <<enumeration>>
+    pending
+    payment_failed
+    paid
+    processing
+    shipped
+    completed
+    cancelled
+}
+
+' Main Tables
+class products <<Table>> {
+    **id**: uuid (PK)
+    **name**: text NOT NULL
+    **description**: text
+    **price_lovelace**: bigint NOT NULL
+    **stock**: integer DEFAULT 0
+    **is_active**: boolean DEFAULT true
+    **is_featured**: boolean DEFAULT false
+    **created_at**: timestamptz DEFAULT now()
+    **updated_at**: timestamptz DEFAULT now()
+    **deleted_at**: timestamptz
+    --
+    +INDEX: idx_products_active
+    +INDEX: idx_products_featured
+}
+
+class product_images <<Table>> {
+    **id**: uuid (PK)
+    **product_id**: uuid (FK)
+    **image_url**: text NOT NULL
+    **alt_text**: text
+    **display_order**: integer DEFAULT 0
+    **created_at**: timestamptz DEFAULT now()
+}
+
+class orders <<Table>> {
+    **id**: uuid (PK)
+    **wallet_address**: text NOT NULL
+    **total_lovelace**: bigint NOT NULL
+    **status**: order_status NOT NULL DEFAULT 'pending'
+    **cardano_tx_hash**: text
+    **payment_error**: text
+    **is_timeout**: boolean DEFAULT false
+    **retry_count**: integer DEFAULT 0
+    **can_cancel**: boolean DEFAULT true
+    **created_at**: timestamptz DEFAULT now()
+    **updated_at**: timestamptz DEFAULT now()
+    **deleted_at**: timestamptz
+    --
+    +INDEX: idx_orders_wallet
+    +INDEX: idx_orders_status
+}
+
+class order_items <<Table>> {
+    **id**: uuid (PK)
+    **order_id**: uuid (FK)
+    **product_id**: uuid (FK)
+    **quantity**: integer NOT NULL
+    **price_lovelace**: bigint NOT NULL
+    **created_at**: timestamptz DEFAULT now()
+}
+
+' Relationships
+products "1" -- "0..*" product_images : "has\n(CASCADE)"
+products "1" -- "0..*" order_items : "appears in\n(CASCADE)"
+orders "1" -- "1..*" order_items : "contains\n(CASCADE)"
+
+orders ..> order_status : "uses"
+
+' Notes and Constraints
+note top of products
+  **Products Table**
+  • Prices stored in lovelace (1 ADA = 1,000,000 lovelace)
+  • Soft delete with deleted_at timestamp
+  • Active filter: is_active = true AND deleted_at IS NULL
+  • Auto-updated_at trigger
+end note
+
+note top of orders
+  **Orders Table**
+  • Cardano wallet-based system
+  • Blockchain transaction tracking via cardano_tx_hash
+  • Payment timeout handling with retry_count
+  • Cancellation allowed by default
+end note
+
+note bottom of order_items
+  **Order Items Table**
+  • Price snapshot at purchase time
+  • Preserves historical pricing
+  • Links orders to products
+end note
+
+note left of order_status
+  **Order Status Enum**
+  • Complete order lifecycle
+  • From pending to completion
+  • Handles payment failures
+end note
+
+' Legend
+legend bottom right
+  **Database Schema Legend**
+  
+  **Elements:**
+  🟦 Tables - Core data
+  🟪 Enums - Fixed values
+  
+  **Keys:**
+  PK - Primary Key
+  FK - Foreign Key
+  
+  **Indexes:**
+  • Performance optimization
+  • Query acceleration
+end legend
+
+@enduml

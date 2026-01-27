@@ -1,0 +1,63 @@
+@startuml
+' ===================================================================
+' C4 Component Diagram for Ecommerce Whitelabel Platform
+' ===================================================================
+' Level 3: Component Diagram - Shows the internal components of key containers
+' ===================================================================
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+!include https://raw.githubusercontent.com/tx3-lang/tx3-ecommerce-template/refs/heads/docs/diagrams/docs/architecture/c4-styles.puml
+
+' Title
+title Component Diagram - Ecommerce Whitelabel Platform
+
+' Persons
+CUSTOMER(customer, "Customer")
+ADMIN(admin, "Administrator")
+
+' Container Boundary for Web Application
+Container_Boundary(web_app_boundary, "Web Application") {
+    
+    ' Components
+    PRODUCT_CATALOG(product_catalog, "Product Catalog", "Manages product display and search")
+    SHOPPING_CART(shopping_cart, "Shopping Cart", "Handles cart operations and persistence")
+    CHECKOUT_FLOW(checkout_flow, "Checkout Flow", "Multi-step payment process")
+    ORDER_MANAGEMENT(order_management, "Order Management", "Tracks and manages orders")
+    BRAND_CONFIG(brand_config, "Brand Configuration", "Whitelabel customization system")
+    CARDANO_INTEGRATION(cardano_integration, "Cardano Integration", "Wallet connection and payments")
+}
+
+' Database Container
+DATABASE(database, "Database", "Stores all application data")
+
+' External Systems
+SUPABASE(supabase_system, "Supabase")
+CARDANO(cardano_system, "Cardano Network")
+WALLETS(wallet_system, "Wallet Providers")
+
+' Relationships
+USES_HTTPS(customer, product_catalog, "Browse products")
+USES_HTTPS(customer, shopping_cart, "Manage cart")
+USES_HTTPS(customer, checkout_flow, "Complete purchase")
+USES_HTTPS(customer, order_management, "View orders")
+
+' Component Relationships
+Rel(product_catalog, database, "Query products", "Supabase")
+Rel(shopping_cart, database, "Validate stock", "React Query")
+Rel(checkout_flow, shopping_cart, "Get cart items", "React Context")
+Rel(checkout_flow, cardano_integration, "Process payment", "CIP-30")
+Rel(order_management, database, "CRUD orders", "Supabase")
+Rel(brand_config, product_catalog, "Apply theming", "CSS Variables")
+Rel(brand_config, shopping_cart, "Apply theming", "CSS Variables")
+Rel(brand_config, checkout_flow, "Apply theming", "CSS Variables")
+
+' External System Relationships
+Rel(cardano_integration, cardano_system, "Submit transactions", "Blockchain")
+Rel(cardano_integration, wallet_system, "Connect wallets", "CIP-30")
+MANAGES(admin, database, "Manage content")
+Rel_Back(database, supabase_system, "Hosted on", "PostgreSQL")
+
+' Legend
+SHOW_LEGEND()
+
+@enduml
