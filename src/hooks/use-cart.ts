@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 
 // Contexts
 import { useCartContext } from '@/contexts/CartContext';
-
+import { calculateCartTotals } from '@/lib/cart-calculations';
 // Lib
 import type { CartItem } from '@/lib/cart-storage';
 
@@ -24,6 +24,8 @@ export interface CartHook {
 	hasItem: (productId: string) => boolean;
 	getTotalItems: () => number;
 	clearErrors: () => void;
+	currencyBreakdown: ReturnType<typeof calculateCartTotals>['currencyBreakdown'];
+	currencies: string[];
 }
 
 export function useCart(): CartHook {
@@ -67,9 +69,11 @@ export function useCart(): CartHook {
 				id: product.id,
 				name: product.name,
 				description: product.description,
-				price_lovelace: product.price_lovelace,
+				price: product.price,
+				token_id: product.token_id,
 				stock: product.stock,
 				image_url: product.product_images?.[0]?.image_url,
+				supported_tokens: product.supported_tokens,
 			};
 
 			validateStock(productId, quantity, customProduct);
@@ -114,16 +118,13 @@ export function useCart(): CartHook {
 	}, [contextRefresh]);
 
 	const cartMetrics = useMemo(() => {
-		let total = 0;
-		let itemCount = 0;
+		const cartTotals = calculateCartTotals(cartItems);
 		const itemMap = new Map<string, CartItem>();
 
 		const processedItems = cartItems
 			.map(item => {
 				if (!item.product) return null;
-				const subtotal = item.quantity * item.product.price_lovelace;
-				total += subtotal;
-				itemCount += item.quantity;
+				const subtotal = item.quantity * item.product.price;
 				itemMap.set(item.productId, item);
 				return { ...item, subtotal } as CartItem;
 			})
@@ -132,9 +133,11 @@ export function useCart(): CartHook {
 
 		return {
 			items: processedItems,
-			total,
-			itemCount,
+			total: cartTotals.subtotal,
+			itemCount: cartTotals.totalItems,
 			itemMap,
+			currencyBreakdown: cartTotals.currencyBreakdown,
+			currencies: cartTotals.currencies,
 		};
 	}, [cartItems]);
 
@@ -184,5 +187,7 @@ export function useCart(): CartHook {
 		hasItem,
 		getTotalItems,
 		clearErrors,
+		currencyBreakdown: cartMetrics.currencyBreakdown,
+		currencies: cartMetrics.currencies,
 	};
 }

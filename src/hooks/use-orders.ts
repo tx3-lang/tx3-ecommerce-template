@@ -14,7 +14,8 @@ export function useCreateOrder() {
 				.from('orders')
 				.insert({
 					wallet_address: data.wallet_address,
-					total_lovelace: data.total_lovelace,
+					total_amount: data.total_amount,
+					token_id: data.token_id,
 					status: 'pending',
 				})
 				.select()
@@ -27,7 +28,8 @@ export function useCreateOrder() {
 				order_id: orderData.id,
 				product_id: item.product_id,
 				quantity: item.quantity,
-				price_lovelace: item.price_lovelace,
+				price: item.price,
+				token_id: item.token_id,
 			}));
 
 			const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
@@ -105,7 +107,8 @@ export function useOrders(walletAddress?: string) {
 					order_items (
 						product_id,
 						quantity,
-						price_lovelace,
+						price,
+						token_id,
 						products:product_id (
 							name,
 							description,
@@ -143,7 +146,8 @@ export function useOrder(orderId?: string) {
 					order_items (
 						product_id,
 						quantity,
-						price_lovelace,
+						price,
+						token_id,
 						products:product_id (
 							name,
 							description,

@@ -4,10 +4,9 @@ import { useState } from 'react';
 // Components
 import { Button } from '@/components/ui/button';
 import { QuantitySelector } from '@/components/ui/quantity-selector';
-
-// Lib
-import { formatLovelaceToAda } from '@/lib/ada-formatter';
 import type { CartItem as TCartItem } from '@/lib/cart-storage';
+// Lib
+import { formatPriceSyncById } from '@/lib/unified-formatter';
 import { cn } from '@/lib/utils';
 
 interface CartItemProps {
@@ -69,7 +68,9 @@ export function CartItem({ item, onQuantityChange, onRemove, compact = false }: 
 
 				<div className="text-right">
 					<p className={cn('font-semibold text-sm', compact ? 'text-white' : 'text-gray-900')}>
-						{formatLovelaceToAda(item.subtotal, 2)}
+						{formatPriceSyncById(item.subtotal, item.product.token_id, {
+							supportedToken: item.product.supported_tokens,
+						})}
 					</p>
 					<Button
 						type="button"
@@ -154,10 +155,15 @@ export function CartItem({ item, onQuantityChange, onRemove, compact = false }: 
 				<div className="flex items-center justify-between">
 					<div>
 						<p className={cn('text-sm', compact ? 'text-gray-400' : 'text-gray-600')}>
-							{formatLovelaceToAda(item.product.price_lovelace, 2)} each
+							{formatPriceSyncById(item.product.price, item.product.token_id, {
+								supportedToken: item.product.supported_tokens,
+							})}{' '}
+							each
 						</p>
 						<p className={cn('font-semibold text-lg', compact ? 'text-white' : 'text-gray-900')}>
-							{formatLovelaceToAda(item.subtotal, 2)}
+							{formatPriceSyncById(item.subtotal, item.product.token_id, {
+								supportedToken: item.product.supported_tokens,
+							})}
 						</p>
 					</div>
 

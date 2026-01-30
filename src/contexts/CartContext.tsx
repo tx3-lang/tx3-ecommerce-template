@@ -29,7 +29,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
 			// Validate that all items have complete product data
 			const validItems = cart.items.filter(
-				item => item.product && item.product.id === item.productId && item.product.name && item.product.price_lovelace,
+				item => item.product && item.product.id === item.productId && item.product.name && item.product.price,
 			);
 
 			setItems(validItems);
@@ -103,14 +103,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 		if (existingItemIndex >= 0) {
 			currentItems[existingItemIndex].quantity += quantity;
 			// Update subtotal
-			currentItems[existingItemIndex].subtotal = currentItems[existingItemIndex].quantity * product.price_lovelace;
+			currentItems[existingItemIndex].subtotal = currentItems[existingItemIndex].quantity * product.price;
 		} else {
 			currentItems.push({
 				productId,
 				quantity,
 				addedAt: Date.now(),
 				product,
-				subtotal: quantity * product.price_lovelace,
+				subtotal: quantity * product.price,
 			});
 		}
 
@@ -169,7 +169,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
 		// Validate that all items have complete product data
 		const validItems = cart.items.filter(
-			item => item.product && item.product.id === item.productId && item.product.name && item.product.price_lovelace,
+			item => item.product && item.product.id === item.productId && item.product.name && item.product.price,
 		);
 
 		setItems(validItems);

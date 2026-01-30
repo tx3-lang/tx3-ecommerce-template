@@ -12,7 +12,7 @@ import { useCart } from '@/hooks/use-cart';
 import { useCartItems } from '@/hooks/use-cart-items';
 
 // Lib
-import { formatLovelaceToAda } from '@/lib/ada-formatter';
+import { formatPriceSync } from '@/lib/unified-formatter';
 
 interface ReviewStepProps {
 	total: number;
@@ -22,7 +22,7 @@ interface ReviewStepProps {
 
 function ReviewStepComponent({ total, isLoading, onProceed }: ReviewStepProps) {
 	const navigate = useNavigate();
-	const { items, updateQuantity, removeItem } = useCart();
+	const { items, updateQuantity, removeItem, currencyBreakdown } = useCart();
 	const { cartItemsWithStock, hasStockIssues, isCheckoutBlocked } = useCartItems({
 		enableStockValidation: true,
 	});
@@ -75,10 +75,35 @@ function ReviewStepComponent({ total, isLoading, onProceed }: ReviewStepProps) {
 			<div className="bg-white border rounded-lg p-6">
 				<h3 className="font-semibold mb-4">Order Summary</h3>
 				<div className="space-y-3">
-					<div className="flex justify-between text-sm">
-						<span>Subtotal ({items.length} items)</span>
-						<span>{formatLovelaceToAda(total, 2)}</span>
-					</div>
+					{/* Currency Breakdown */}
+					{currencyBreakdown && Object.keys(currencyBreakdown).length > 0 ? (
+						<div className="space-y-4 mb-4">
+							<h4 className="text-sm font-medium text-gray-700">Payment Details by Currency:</h4>
+							{Object.entries(currencyBreakdown).map(([currencyKey, data]) => {
+								const isAda = data.currencyType === 'ADA';
+
+								return (
+									<div key={currencyKey} className="mb-4 p-4 border border-gray-200 rounded-lg">
+										<div className={`font-semibold ${isAda ? 'text-blue-600' : 'text-purple-600'}`}>
+											Cardano Payment ({isAda ? '₳' : data.currencySymbol})
+										</div>
+										<div className="text-lg font-bold mt-2">
+											{formatPriceSync(data.subtotal, data.policyId, data.assetName)}
+										</div>
+										<div className="text-sm text-gray-600">
+											{data.itemCount} {data.itemCount === 1 ? 'item' : 'items'} in this currency
+										</div>
+									</div>
+								);
+							})}
+						</div>
+					) : (
+						<div className="flex justify-between text-sm">
+							<span>Subtotal ({items.length} items)</span>
+							<span>{formatPriceSync(total, null, null)}</span>
+						</div>
+					)}
+
 					<div className="flex justify-between text-sm">
 						<span>Shipping</span>
 						<span className="text-green-600">Free</span>
@@ -90,7 +115,7 @@ function ReviewStepComponent({ total, isLoading, onProceed }: ReviewStepProps) {
 					<div className="border-t pt-3">
 						<div className="flex justify-between text-lg font-semibold">
 							<span>Total</span>
-							<span>{formatLovelaceToAda(total, 2)}</span>
+							<span>{formatPriceSync(total, null, null)}</span>
 						</div>
 					</div>
 				</div>

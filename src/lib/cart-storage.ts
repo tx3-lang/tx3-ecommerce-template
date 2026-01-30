@@ -6,11 +6,20 @@ export interface CartItem {
 		id: string;
 		name: string;
 		description: string | null;
-		price_lovelace: number;
+		price: number;
+		token_id: string | null;
 		stock: number;
 		image_url?: string;
+		supported_tokens: Database.SupportedToken | null;
 	};
 	subtotal: number;
+}
+
+export interface CartItemWithCurrency extends CartItem {
+	currencyKey: string;
+	currencyType: 'ADA' | 'TOKEN';
+	currencySymbol: string;
+	currencyDecimals: number;
 }
 
 export interface CartStorage {

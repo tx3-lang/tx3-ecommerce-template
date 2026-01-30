@@ -8,7 +8,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { useOrder } from '@/hooks/use-orders';
 
 // Lib
-import { formatLovelaceToAda } from '@/lib/ada-formatter';
+import { formatPriceSyncById } from '@/lib/unified-formatter';
 
 export const Route = createFileRoute('/order-confirmation/$orderId')({
 	component: OrderConfirmation,
@@ -107,7 +107,11 @@ function OrderConfirmation() {
 										</div>
 
 										<div className="text-right">
-											<p className="font-semibold">{formatLovelaceToAda(item.price_lovelace, 2)}</p>
+											<p className="font-semibold">
+												{formatPriceSyncById(item.price, item.token_id, {
+													supportedToken: item.supported_tokens,
+												})}
+											</p>
 											<p className="text-sm text-gray-600">each</p>
 										</div>
 									</div>
@@ -124,7 +128,11 @@ function OrderConfirmation() {
 							<div className="space-y-3">
 								<div className="flex justify-between text-sm">
 									<span className="text-gray-600">Subtotal</span>
-									<span className="font-medium">{formatLovelaceToAda(order.total_lovelace, 2)}</span>
+									<span className="font-medium">
+										{formatPriceSyncById(order.total_amount, order.token_id, {
+											supportedToken: order.supported_tokens,
+										})}
+									</span>
 								</div>
 
 								<div className="flex justify-between text-sm">
@@ -135,7 +143,11 @@ function OrderConfirmation() {
 								<div className="border-t pt-3">
 									<div className="flex justify-between">
 										<span className="font-semibold">Total</span>
-										<span className="font-bold text-lg">{formatLovelaceToAda(order.total_lovelace, 2)}</span>
+										<span className="font-bold text-lg">
+											{formatPriceSyncById(order.total_amount, order.token_id, {
+												supportedToken: order.supported_tokens,
+											})}
+										</span>
 									</div>
 								</div>
 							</div>

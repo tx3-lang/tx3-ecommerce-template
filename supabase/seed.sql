@@ -1,59 +1,95 @@
 -- Seed data for products table
--- Converting mock products to database records
--- Prices are in lovelace (1 ADA = 1,000,000 lovelace)
+-- Updated to use token_id instead of policy_id/asset_name
+-- Prices are in the smallest unit of the currency (lovelace for ADA, token units for tokens)
+-- ADA products have NULL token_id
+-- Token products have non-NULL token_id (foreign key to supported_tokens)
 
-INSERT INTO products (name, description, price_lovelace, stock, is_active, is_featured) VALUES
+-- Insert token metadata first (required for foreign key constraints)
+INSERT INTO supported_tokens (
+  policy_id,
+  asset_name,
+  display_name,
+  decimals,
+  is_active
+) VALUES 
+  ('1a2b3c4d5e6f7890123456789012345678901234567890123456789012345678', '446f6765436f696e', 'DogeCoin', 2, true),
+  ('9f8e7d6c5b4a3210fedcba9876543210fedcba9876543210fedcba9876543210', '4e465466726f6d5370616365', null, 0, true),
+  ('abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890', '5574696c697479546f6b656e', 'UtilityToken', 6, true);
+
+-- Insert ADA products (token_id = NULL)
+INSERT INTO products (name, description, price, stock, is_active, is_featured, token_id) VALUES
 (
   'Premium Wireless Headphones',
   'Experience crystal-clear audio with active noise cancellation and 30-hour battery life.',
-  85500000,
+  85500000, -- 85.5 ADA
   15,
   true,
-  true
+  true,
+  NULL
 ),
 (
   'Smart Fitness Watch',
   'Track your health and fitness goals with this advanced smartwatch featuring heart rate monitoring.',
-  120000000,
+  120000000, -- 120 ADA
   25,
   true,
-  false
+  false,
+  NULL
 ),
 (
   'Organic Coffee Beans',
   'Premium organic coffee beans sourced from sustainable farms. Rich, aromatic flavor profile.',
-  45750000,
+  45750000, -- 45.75 ADA
   25,
   true,
-  true
+  true,
+  NULL
 ),
 (
   'Ergonomic Office Chair',
   'Comfortable ergonomic office chair with lumbar support and adjustable height for all-day comfort.',
-  250000000,
+  250000000, -- 250 ADA
   12,
   true,
-  false
+  false,
+  NULL
 ),
 (
   'Yoga Mat Premium',
   'Non-slip premium yoga mat with extra cushioning. Perfect for all yoga and exercise routines.',
-  35000000,
+  35000000, -- 35 ADA
   30,
   true,
-  false
+  false,
+  NULL
 ),
 (
   'Wireless Charging Pad',
   'Fast wireless charging pad compatible with all Qi-enabled devices. Sleek and minimalist design.',
-  28500000,
+  28500000, -- 28.5 ADA
   18,
   true,
-  true
+  true,
+  NULL
 );
 
+-- Insert products priced in tokens
+INSERT INTO products (
+  name,
+  description,
+  price,
+  stock,
+  is_active,
+  is_featured,
+  token_id
+) VALUES 
+  ('Crypto Trading Bot License', 'Advanced automated trading bot with AI-powered strategies for cryptocurrency markets.', 250, 5, true, true, (SELECT id FROM supported_tokens WHERE display_name = 'DogeCoin' LIMIT 1)),
+  ('Digital Art NFT', 'Unique digital artwork from Space collection. One-of-a-kind piece.', 1, 1, true, true, (SELECT id FROM supported_tokens WHERE asset_name = '4e465466726f6d5370616365' LIMIT 1)),
+  ('Premium Subscription', 'Monthly premium subscription with access to all features and priority support.', 5000000, 100, true, false, (SELECT id FROM supported_tokens WHERE display_name = 'UtilityToken' LIMIT 1));
+
+
 -- Insert reliable placeholder images with consistent service
--- Using picsum.photos which is designed specifically for placeholder images and is highly reliable
+-- Using unsplash which is designed specifically for placeholder images and is highly reliable
 INSERT INTO product_images (product_id, image_url, alt_text, display_order) 
 SELECT 
   id,
@@ -64,6 +100,9 @@ SELECT
     WHEN 'Ergonomic Office Chair' THEN 'https://images.unsplash.com/photo-1688578735352-9a6f2ac3b70a?w=800&h=800&fit=crop&crop=entropy'
     WHEN 'Yoga Mat Premium' THEN 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=800&h=800&fit=crop&crop=entropy'
     WHEN 'Wireless Charging Pad' THEN 'https://images.unsplash.com/photo-1617975316514-69cd7e16c2a4?w=800&h=800&fit=crop&crop=entropy'
+    WHEN 'Crypto Trading Bot License' THEN 'https://images.unsplash.com/photo-1622630998477-20aa696ecb05?w=800&h=800&fit=crop&crop=entropy'
+    WHEN 'Digital Art NFT' THEN 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=800&h=800&fit=crop&crop=entropy'
+    WHEN 'Premium Subscription' THEN 'https://images.unsplash.com/photo-1553729459-efe14ef6055d?w=800&h=800&fit=crop&crop=entropy'
   END,
   CASE name
     WHEN 'Premium Wireless Headphones' THEN 'Premium wireless headphones with active noise cancellation and premium comfort for professional audio experience'
@@ -72,6 +111,9 @@ SELECT
     WHEN 'Ergonomic Office Chair' THEN 'Comfortable ergonomic office chair with adjustable lumbar support, armrests, and breathable mesh back'
     WHEN 'Yoga Mat Premium' THEN 'Non-slip premium yoga mat with extra cushioning, alignment guides, and carrying strap for portability'
     WHEN 'Wireless Charging Pad' THEN 'Fast wireless charging pad compatible with all Qi-enabled devices featuring LED indicator and sleek minimalist design'
+    WHEN 'Crypto Trading Bot License' THEN 'Advanced cryptocurrency trading bot interface with AI-powered algorithms and real-time market analysis charts'
+    WHEN 'Digital Art NFT' THEN 'Unique digital artwork from space collection with vibrant cosmic colors and abstract patterns'
+    WHEN 'Premium Subscription' THEN 'Premium subscription service interface with enhanced features and priority customer support options'
   END,
   0
 FROM products

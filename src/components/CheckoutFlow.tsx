@@ -78,9 +78,11 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 				items: items.map(item => ({
 					product_id: item.productId,
 					quantity: item.quantity,
-					price_lovelace: item.product.price_lovelace,
+					price: item.product.price,
+					token_id: item.product.token_id,
 				})),
-				total_lovelace: total,
+				total_amount: total,
+				token_id: items[0]?.product.token_id || null,
 			};
 
 			const order = await createOrderMutation.mutateAsync(orderData);
@@ -109,7 +111,12 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 
 		try {
 			// Process payment with timeout
-			const paymentResult = await processCardanoPayment(wallet, createdOrder);
+			const paymentResult = await processCardanoPayment(wallet, {
+				id: createdOrder.id,
+				amount: createdOrder.total_amount,
+				policyId: undefined, // TODO: Handle mixed currencies
+				assetName: undefined, // TODO: Handle mixed currencies
+			});
 
 			if (paymentResult.success && paymentResult.txHash) {
 				// Update order status to paid

@@ -15,7 +15,7 @@ export const Route = createFileRoute('/(shop)/cart')({
 });
 
 function CartPage() {
-	const { total, itemCount, updateQuantity, removeItem, isEmpty, isLoaded, refresh } = useCart();
+	const { total, itemCount, updateQuantity, removeItem, isEmpty, isLoaded, refresh, currencyBreakdown } = useCart();
 	const { cartItemsWithStock, hasStockIssues, isValidatingStock } = useCartItems({
 		enableStockValidation: true,
 	});
@@ -98,7 +98,7 @@ function CartPage() {
 						{/* Order Summary Section */}
 						<div className="lg:col-span-1">
 							<CartSummary
-								subtotal={total}
+								currencyBreakdown={currencyBreakdown}
 								total={total}
 								itemCount={itemCount}
 								sticky

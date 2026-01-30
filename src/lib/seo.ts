@@ -102,6 +102,7 @@ export function generateProductMetaTags(product: {
 	name: string;
 	description: string;
 	price: number;
+	currency: string;
 	image?: string;
 	category?: string;
 	productId: string;
@@ -121,7 +122,7 @@ export function generateProductMetaTags(product: {
 	// Add product-specific Open Graph tags
 	metaTags.push(
 		{ property: 'product:price:amount', content: product.price.toString() },
-		{ property: 'product:price:currency', content: 'ADA' },
+		{ property: 'product:price:currency', content: product.currency },
 		...(product.category ? [{ property: 'product:category', content: product.category }] : []),
 	);
 

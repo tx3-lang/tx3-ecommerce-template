@@ -5,7 +5,8 @@ declare namespace Database {
 		id: string;
 		name: string;
 		description: string | null;
-		price_lovelace: number;
+		price: number;
+		token_id: string | null;
 		stock: number;
 		is_active: boolean;
 		is_featured: boolean;
@@ -13,6 +14,7 @@ declare namespace Database {
 		updated_at: string;
 		deleted_at: string | null;
 		product_images: ProductImage[] | null;
+		supported_tokens: SupportedToken | null;
 	}
 
 	interface ProductImage {
@@ -27,17 +29,19 @@ declare namespace Database {
 	interface Order {
 		id: string;
 		wallet_address: string;
-		total_lovelace: number;
+		total_amount: number;
 		status: OrderStatus;
 		cardano_tx_hash: string | null;
 		payment_error: string | null;
 		is_timeout: boolean;
 		retry_count: number;
 		can_cancel: boolean;
+		token_id: string | null;
 		order_items: OrderItem[] | null;
 		created_at: string;
 		updated_at: string;
 		deleted_at: string | null;
+		supported_tokens: SupportedToken | null;
 	}
 
 	interface OrderItem {
@@ -46,8 +50,10 @@ declare namespace Database {
 		product_id: string;
 		products: Product | null;
 		quantity: number;
-		price_lovelace: number;
+		price: number;
+		token_id: string | null;
 		created_at: string;
+		supported_tokens: SupportedToken | null;
 	}
 
 	interface CreateOrderData {
@@ -55,8 +61,37 @@ declare namespace Database {
 		items: {
 			product_id: string;
 			quantity: number;
-			price_lovelace: number;
+			price: number;
+			token_id: string | null;
 		}[];
-		total_lovelace: number;
+		total_amount: number;
+		token_id: string | null;
+	}
+
+	// Helper type for multi-order creation during checkout
+	interface CreateMultiCurrencyOrdersData {
+		wallet_address: string;
+		orders: {
+			items: {
+				product_id: string;
+				quantity: number;
+				price: number;
+				token_id: string | null;
+			}[];
+			total_amount: number;
+			token_id: string | null;
+		}[];
+	}
+
+	// Supported tokens table interface
+	interface SupportedToken {
+		id: string;
+		policy_id: string;
+		asset_name: string;
+		display_name: string | null;
+		decimals: number;
+		is_active: boolean;
+		created_at: string;
+		updated_at: string;
 	}
 }

@@ -8,8 +8,9 @@ export const Route = createFileRoute('/api/products')({
 		const { data, error } = await supabase
 			.from('products')
 			.select(`
-        *,
-        product_images (image_url, alt_text, display_order)
+				*,
+				product_images (image_url, alt_text, display_order),
+				supported_tokens (policy_id, asset_name, display_name, decimals)
       `)
 			.eq('is_active', true)
 			.is('deleted_at', null)

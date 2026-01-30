@@ -6,7 +6,7 @@ import { memo } from 'react';
 import { Button } from '@/components/ui/button';
 
 // Lib
-import { formatLovelaceToAda } from '@/lib/ada-formatter';
+import { formatLovelaceToAda } from '@/lib/unified-formatter';
 
 interface ConfirmationStepProps {
 	total: number;

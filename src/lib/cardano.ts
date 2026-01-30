@@ -52,10 +52,7 @@ export const getWalletBalance = async (wallet: CardanoWalletAPI): Promise<Wallet
 	}
 };
 
-export const submitTransaction = async (
-	_wallet: CardanoWalletAPI,
-	paymentRequest: PaymentRequest,
-): Promise<TransactionResult> => {
+export const submitTransaction = async (_wallet: CardanoWalletAPI, paymentRequest: any): Promise<TransactionResult> => {
 	try {
 		// TODO: Implement actual Cardano transaction building and submission
 		// This would involve:

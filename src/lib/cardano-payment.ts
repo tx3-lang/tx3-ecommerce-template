@@ -6,9 +6,18 @@ export interface PaymentResult {
 }
 
 export interface PaymentRequest {
-	amount: number; // in lovelace
+	amount: number; // in smallest unit of currency (lovelace for ADA, token units for tokens)
 	recipient: string;
+	policyId?: string; // null for ADA
+	assetName?: string; // null for ADA
 	metadata?: Record<string, unknown>;
+}
+
+export interface OrderPaymentInfo {
+	id: string;
+	amount: number;
+	policyId?: string;
+	assetName?: string;
 }
 
 // Merchant address - this should be configurable via environment variables
@@ -20,15 +29,22 @@ const CARDANO_PAYMENT_TIMEOUT = 60000; // 60 seconds = 3 Cardano blocks
 
 export async function processCardanoPayment(
 	_wallet: CardanoWalletAPI,
-	order: { id: string; total_lovelace: number },
+	order: OrderPaymentInfo,
 ): Promise<PaymentResult> {
 	try {
 		const timeoutPromise = new Promise<never>((_, reject) =>
 			setTimeout(() => reject(new Error('Payment timeout')), CARDANO_PAYMENT_TIMEOUT),
 		);
 
+		// Determine payment type
+		const isAdaPayment = !order.policyId && !order.assetName;
+		const currency = isAdaPayment ? 'lovelace' : 'token units';
+		const tokenInfo = isAdaPayment ? '' : ` (${order.policyId}.${order.assetName})`;
+
 		// For now, simulate payment processing
-		console.log(`Processing payment for order ${order.id}: ${order.total_lovelace} lovelace`);
+		console.log(
+			`Processing ${isAdaPayment ? 'ADA' : 'token'} payment for order ${order.id}: ${order.amount} ${currency}${tokenInfo}`,
+		);
 
 		const paymentPromise = new Promise<string>(resolve => {
 			setTimeout(() => resolve('mock-tx-hash'), 2000);
@@ -46,7 +62,13 @@ export async function processCardanoPayment(
 	}
 }
 
-export async function validatePayment(_txHash: string, _expectedAmount: number, _recipient: string): Promise<boolean> {
+export async function validatePayment(
+	_txHash: string,
+	_expectedAmount: number,
+	_recipient: string,
+	_policyId?: string,
+	_assetName?: string,
+): Promise<boolean> {
 	try {
 		// This would integrate with a Cardano block explorer or node
 		// to validate that the transaction exists and has the correct amount
@@ -62,9 +84,16 @@ export async function validatePayment(_txHash: string, _expectedAmount: number, 
 		// Simulate API call delay
 		await new Promise(resolve => setTimeout(resolve, 2000));
 
+		// Determine payment type for validation
+		const isAdaPayment = !_policyId && !_assetName;
+		const paymentType = isAdaPayment ? 'ADA' : 'token';
+		const tokenInfo = isAdaPayment ? '' : ` (${_policyId}.${_assetName})`;
+
 		// Simulate successful validation for demo purposes
 		// In production, this would be actual blockchain validation
-		console.log(`Validating payment: tx=${_txHash}, amount=${_expectedAmount}, recipient=${_recipient}`);
+		console.log(
+			`Validating ${paymentType} payment: tx=${_txHash}, amount=${_expectedAmount}, recipient=${_recipient}${tokenInfo}`,
+		);
 		return true;
 	} catch (error) {
 		console.error('Payment validation failed:', error);
