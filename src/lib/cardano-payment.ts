@@ -20,6 +20,23 @@ export interface OrderPaymentInfo {
 	assetName?: string;
 }
 
+export interface MultiCurrencyPaymentResult {
+	success: boolean;
+	completedOrders: Array<{
+		orderId: string;
+		txHash: string;
+		policyId?: string;
+		assetName?: string;
+	}>;
+	failedOrders: Array<{
+		orderId: string;
+		error: string;
+		policyId?: string;
+		assetName?: string;
+	}>;
+	allCompleted: boolean;
+}
+
 // Merchant address - this should be configurable via environment variables
 // TODO: Use this merchant address in payment processing
 // const MERCHANT_ADDRESS = import.meta.env.VITE_MERCHANT_ADDRESS || '';
@@ -60,6 +77,79 @@ export async function processCardanoPayment(
 			isTimeout: errorMessage === 'Payment timeout',
 		};
 	}
+}
+
+/**
+ * Process multiple payments sequentially for multi-currency orders
+ * Each payment will be processed one at a time, with progress callback
+ */
+export async function processMultiCurrencyPayments(
+	wallet: CardanoWalletAPI,
+	orders: OrderPaymentInfo[],
+	onProgress?: (
+		orderId: string,
+		status: 'processing' | 'completed' | 'failed',
+		result?: PaymentResult,
+	) => void,
+): Promise<MultiCurrencyPaymentResult> {
+	const completedOrders: MultiCurrencyPaymentResult['completedOrders'] = [];
+	const failedOrders: MultiCurrencyPaymentResult['failedOrders'] = [];
+
+	// Process ADA payments first, then token payments
+	const sortedOrders = [...orders].sort((a, b) => {
+		const aIsAda = !a.policyId && !a.assetName;
+		const bIsAda = !b.policyId && !b.assetName;
+		if (aIsAda && !bIsAda) return -1;
+		if (!aIsAda && bIsAda) return 1;
+		return 0;
+	});
+
+	for (const order of sortedOrders) {
+		// Notify processing start
+		onProgress?.(order.id, 'processing');
+
+		try {
+			const result = await processCardanoPayment(wallet, order);
+
+			if (result.success && result.txHash) {
+				completedOrders.push({
+					orderId: order.id,
+					txHash: result.txHash,
+					policyId: order.policyId,
+					assetName: order.assetName,
+				});
+				onProgress?.(order.id, 'completed', result);
+			} else {
+				failedOrders.push({
+					orderId: order.id,
+					error: result.error || 'Payment failed',
+					policyId: order.policyId,
+					assetName: order.assetName,
+				});
+				onProgress?.(order.id, 'failed', result);
+				// Stop processing on first failure
+				break;
+			}
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Payment processing error';
+			failedOrders.push({
+				orderId: order.id,
+				error: errorMessage,
+				policyId: order.policyId,
+				assetName: order.assetName,
+			});
+			onProgress?.(order.id, 'failed', { success: false, error: errorMessage });
+			// Stop processing on first failure
+			break;
+		}
+	}
+
+	return {
+		success: failedOrders.length === 0,
+		completedOrders,
+		failedOrders,
+		allCompleted: completedOrders.length === orders.length,
+	};
 }
 
 export async function validatePayment(

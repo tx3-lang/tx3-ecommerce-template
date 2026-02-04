@@ -196,10 +196,9 @@ export function formatPriceSync(
 		showSymbol?: boolean;
 		decimals?: number;
 		compact?: boolean;
-		tokenDecimals?: number;
 	} = {},
 ): string {
-	const { showSymbol = true, decimals, compact = false, tokenDecimals = 0 } = options;
+	const { showSymbol = true, decimals, compact = false } = options;
 
 	// Handle ADA (default case)
 	if (!policyId && !assetName) {
@@ -219,7 +218,7 @@ export function formatPriceSync(
 	}
 
 	// Handle tokens with fallback logic
-	const finalDecimals = decimals ?? tokenDecimals;
+	const finalDecimals = decimals ?? 0;
 	const displayAmount = price / 10 ** finalDecimals;
 	const tokenSymbol = assetName ? hexToAscii(assetName) || `Token(${assetName.slice(0, 8)}...)` : 'TOKEN';
 

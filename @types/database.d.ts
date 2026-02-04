@@ -68,19 +68,22 @@ declare namespace Database {
 		token_id: string | null;
 	}
 
+	// Input type for order items (without calculated fields)
+	interface OrderItemInput {
+		product_id: string;
+		quantity: number;
+		price: number;
+		token_id?: string | null;
+	}
+
 	// Helper type for multi-order creation during checkout
 	interface CreateMultiCurrencyOrdersData {
 		wallet_address: string;
 		orders: {
-			items: {
-				product_id: string;
-				quantity: number;
-				price: number;
-				token_id: string | null;
-			}[];
-			total_amount: number;
-			token_id: string | null;
+			items: OrderItemInput[];
+			token_id?: string | null;
 		}[];
+		currencies?: Record<string, { policy_id: string | null; asset_name: string | null; decimals: number | null; }>;
 	}
 
 	// Supported tokens table interface

@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 // Hooks
 import { useCart } from '@/hooks/use-cart';
 import { useCreateMultiCurrencyOrders } from '@/hooks/use-multi-currency-orders';
+import { useValidateBulkStock } from '@/hooks/use-stock-reservation';
 import { useWallet } from '@/hooks/use-wallet';
 
 // Lib
@@ -14,6 +15,7 @@ export function useCheckout() {
 	const { wallet } = useWallet();
 	const { items: cartItems, clear } = useCart();
 	const createMultiCurrencyOrders = useCreateMultiCurrencyOrders();
+	const validateCartStockMutation = useValidateBulkStock();
 
 	const processPayment = useCallback(
 		async (paymentRequest: PaymentRequest): Promise<TransactionResult> => {
@@ -52,7 +54,7 @@ export function useCheckout() {
 		[wallet],
 	);
 
-	const createOrder = useCallback(async (orderData: any): Promise<Database.Order | null> => {
+	const createOrder = useCallback(async (orderData: Database.CreateOrderData): Promise<Database.Order | null> => {
 		try {
 			// Legacy order creation - kept for backward compatibility
 			console.log('Creating order:', orderData);
@@ -74,7 +76,20 @@ export function useCheckout() {
 		setError(null);
 
 		try {
-			// Get wallet address
+			// Step 1: Validate stock for all cart items
+			const cartItemsForValidation = cartItems.map(item => ({
+				product_id: item.productId,
+				quantity: item.quantity,
+			}));
+
+			const stockValidation = await validateCartStockMutation.mutateAsync(cartItemsForValidation);
+
+			if (!stockValidation.success) {
+				setError(stockValidation.message || 'Some items have insufficient stock. Please update your cart.');
+				return null;
+			}
+
+			// Step 2: Get wallet address
 			const addresses = await wallet.getUsedAddresses();
 			if (addresses.length === 0) {
 				setError('No wallet address found');
@@ -82,24 +97,33 @@ export function useCheckout() {
 			}
 			const walletAddress = addresses[0];
 
-			// Convert cart items to orders data (one order per currency)
+			// Step 3: Convert cart items to orders data (one order per currency)
 			const ordersData = getOrdersDataFromCart(cartItems, walletAddress);
 
-			// Create orders in database
+			// Step 4: Create orders in database
 			const createdOrders = await createMultiCurrencyOrders.mutateAsync(ordersData);
 
-			// Clear cart after successful order creation
+			// Step 5: Clear cart after successful order creation
 			await clear();
 
 			return createdOrders;
 		} catch (err) {
 			const errorMessage = err instanceof Error ? err.message : 'Order creation failed';
-			setError(errorMessage);
+
+			// Handle specific stock-related errors
+			if (errorMessage.includes('Insufficient stock')) {
+				setError('Some items in your cart are no longer available. Please update your cart.');
+			} else if (errorMessage.includes('Token')) {
+				setError('Invalid payment token used. Please try again.');
+			} else {
+				setError(errorMessage);
+			}
+
 			return null;
 		} finally {
 			setProcessing(false);
 		}
-	}, [wallet, cartItems, clear, createMultiCurrencyOrders]);
+	}, [wallet, cartItems, clear, createMultiCurrencyOrders, validateCartStockMutation]);
 
 	const processMultiCurrencyPayments = useCallback(
 		async (orders: Database.Order[]): Promise<TransactionResult[]> => {

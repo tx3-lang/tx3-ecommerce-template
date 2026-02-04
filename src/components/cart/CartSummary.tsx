@@ -43,7 +43,7 @@ export function CartSummary({
 							{data.currencySymbol} ({data.itemCount} items):
 						</span>
 						<span className={isCompact ? 'text-white' : 'font-medium'}>
-							{formatPriceSync(data.subtotal, data.policyId, data.assetName, { tokenDecimals: data.currencyDecimals})}
+							{formatPriceSync(data.subtotal, data.policyId, data.assetName, { decimals: data.currencyDecimals})}
 						</span>
 					</div>
 				);
@@ -62,10 +62,10 @@ export function CartSummary({
 					<span className="text-green-400">Free</span>
 				</div>
 
-				<div className="flex justify-between font-semibold pt-2">
+				{/* <div className="flex justify-between font-semibold pt-2">
 					<span className="text-white">Total:</span>
 					<span className="text-white">{formatPriceSync(total || 0, null, null)}</span>
-				</div>
+				</div> */}
 
 				{showCheckoutButton && (
 					<div className="mt-4">
@@ -106,17 +106,17 @@ export function CartSummary({
 					<span className="text-green-600 font-medium">Free</span>
 				</div>
 
-				<div className="flex justify-between text-sm">
+				{/* <div className="flex justify-between text-sm">
 					<span className="text-gray-600">Tax</span>
 					<span className="font-medium">-</span>
-				</div>
+				</div> */}
 
-				<hr className="my-3" />
+				{/* <hr className="my-3" />	
 
 				<div className="flex justify-between text-lg font-semibold">
 					<span>Total</span>
 					<span>{formatPriceSync(total || 0, null, null)}</span>
-				</div>
+				</div> */}
 			</div>
 
 			{showCheckoutButton && (

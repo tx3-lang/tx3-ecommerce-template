@@ -1,0 +1,7 @@
+{
+  "name": "order-cleanup",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {},
+  "type": "module"
+}

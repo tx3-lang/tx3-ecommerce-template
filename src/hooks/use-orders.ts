@@ -1,47 +1,51 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 // Lib
+import { createOrderWithStockReservation, updateOrderStatus } from '@/lib/order-api';
+import { reserveBulkStock } from '@/lib/stock-reservation';
 import { supabase } from '@/lib/supabase';
 
-// Create order mutation
+// Create order mutation with stock reservation
 export function useCreateOrder() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
 		mutationFn: async (data: Database.CreateOrderData): Promise<Database.Order> => {
-			// Start a transaction-like operation
-			const { data: orderData, error: orderError } = await supabase
-				.from('orders')
-				.insert({
-					wallet_address: data.wallet_address,
-					total_amount: data.total_amount,
-					token_id: data.token_id,
-					status: 'pending',
-				})
-				.select()
-				.single();
+			// Use the new order creation API with stock reservation
+			const result = await createOrderWithStockReservation(data);
 
-			if (orderError) throw orderError;
+			if (!result.success) {
+				throw new Error(result.error || 'Failed to create order');
+			}
 
-			// Insert order items with price snapshot
-			const orderItems = data.items.map(item => ({
-				order_id: orderData.id,
-				product_id: item.product_id,
-				quantity: item.quantity,
-				price: item.price,
-				token_id: item.token_id,
-			}));
+			if (!result.order) {
+				throw new Error('Order was not created');
+			}
 
-			const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
+			// Reserve stock for all items in the order
+			const reservationResult = await reserveBulkStock(
+				result.order.id,
+				data.items.map(item => ({
+					product_id: item.product_id,
+					quantity: item.quantity,
+				})),
+			);
 
-			if (itemsError) throw itemsError;
+			if (!reservationResult.success) {
+				// Rollback order creation if reservation fails
+				throw new Error(reservationResult.error || 'Failed to reserve stock');
+			}
 
-			return orderData;
+			return result.order;
 		},
 		onSuccess: () => {
 			// Invalidate products cache for stock updates
 			queryClient.invalidateQueries({ queryKey: ['products'] });
 			queryClient.invalidateQueries({ queryKey: ['orders'] });
+			queryClient.invalidateQueries({ queryKey: ['available-stock'] });
+		},
+		onError: error => {
+			console.error('Order creation failed:', error);
 		},
 	});
 }
@@ -62,33 +66,29 @@ export function useUpdateOrderStatus() {
 			txHash?: string | null;
 			error?: string | null;
 		}) => {
-			const updateData: Partial<Database.Order> = {
-				status,
-				updated_at: new Date().toISOString(),
-			};
+			const result = await updateOrderStatus(orderId, status, txHash || undefined, error || undefined);
 
-			if (txHash) {
-				updateData.cardano_tx_hash = txHash;
+			if (!result.success) {
+				throw new Error(result.error || 'Failed to update order status');
 			}
 
-			if (error) {
-				updateData.payment_error = error;
-			}
-
-			const { data: orderData, error: updateError } = await supabase
+			// Fetch the updated order data
+			const { data: orderData, error: fetchError } = await supabase
 				.from('orders')
-				.update(updateData)
+				.select('*')
 				.eq('id', orderId)
-				.select()
 				.single();
 
-			if (updateError) throw updateError;
+			if (fetchError) {
+				throw new Error(`Failed to fetch updated order: ${fetchError.message}`);
+			}
 
 			return orderData;
 		},
 		onSuccess: (data, variables) => {
 			queryClient.invalidateQueries({ queryKey: ['orders'] });
 			queryClient.setQueryData(['order', variables.orderId], data);
+			queryClient.invalidateQueries({ queryKey: ['available-stock'] });
 		},
 	});
 }

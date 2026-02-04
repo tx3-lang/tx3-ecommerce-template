@@ -90,15 +90,25 @@ export function getOrdersDataFromCart(
 		quantity: item.quantity,
 		price: item.product.price,
 		token_id: item.product.token_id,
-		policyId: item.product.supported_tokens?.policy_id ?? null,
-		assetName: item.product.supported_tokens?.asset_name ?? null,
+		policy_id: item.product.supported_tokens?.policy_id ?? null,
+		asset_name: item.product.supported_tokens?.asset_name ?? null,
+		decimals: item.product.supported_tokens?.decimals ?? null,
 	}));
 
 	const groupedItems = groupItemsByCurrencyById(itemsForOrder);
+	const currencies: Database.CreateMultiCurrencyOrdersData['currencies'] = {};
 	const orders = Object.entries(groupedItems).map(([currencyKey, items]) => {
 		// Parse the currency key to get token_id
 		const tokenId = currencyKey === 'ADA' ? null : items[0].token_id;
 		const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+		if (tokenId) {
+			currencies[tokenId] = {
+				policy_id: items[0].policy_id,
+				asset_name: items[0].asset_name,
+				decimals: items[0].decimals,
+			};
+		}
 
 		return {
 			items,
@@ -110,6 +120,7 @@ export function getOrdersDataFromCart(
 	return {
 		wallet_address: walletAddress,
 		orders,
+		currencies,
 	};
 }
 
