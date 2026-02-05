@@ -1,3 +1,9 @@
+import { Buffer } from 'buffer';
+
+// Lib
+import { decodeHexAddress } from '@/lib/cardano';
+import { protocol } from '@/lib/tx3/protocol';
+
 export interface PaymentResult {
 	success: boolean;
 	txHash?: string;
@@ -38,16 +44,12 @@ export interface MultiCurrencyPaymentResult {
 }
 
 // Merchant address - this should be configurable via environment variables
-// TODO: Use this merchant address in payment processing
-// const MERCHANT_ADDRESS = import.meta.env.VITE_MERCHANT_ADDRESS || '';
+const MERCHANT_ADDRESS = import.meta.env.VITE_MERCHANT_ADDRESS || '';
 
 // Timeout configuration
 const CARDANO_PAYMENT_TIMEOUT = 60000; // 60 seconds = 3 Cardano blocks
 
-export async function processCardanoPayment(
-	_wallet: CardanoWalletAPI,
-	order: OrderPaymentInfo,
-): Promise<PaymentResult> {
+export async function processCardanoPayment(wallet: CardanoWalletAPI, order: OrderPaymentInfo): Promise<PaymentResult> {
 	try {
 		const timeoutPromise = new Promise<never>((_, reject) =>
 			setTimeout(() => reject(new Error('Payment timeout')), CARDANO_PAYMENT_TIMEOUT),
@@ -63,8 +65,51 @@ export async function processCardanoPayment(
 			`Processing ${isAdaPayment ? 'ADA' : 'token'} payment for order ${order.id}: ${order.amount} ${currency}${tokenInfo}`,
 		);
 
+		const address = decodeHexAddress(await wallet.getChangeAddress());
+		const commonProps = {
+			buyer: address,
+			merchant: MERCHANT_ADDRESS,
+			quantity: order.amount,
+		};
+
+		const transactionInfo = isAdaPayment
+			? await protocol.payWithAdaTx(commonProps)
+			: await protocol.payWithTokensTx({
+					...commonProps,
+					// biome-ignore lint/style/noNonNullAssertion: Because we check isAdaPayment
+					assetName: Buffer.from(order.assetName!, 'hex'),
+					// biome-ignore lint/style/noNonNullAssertion: Because we check isAdaPayment
+					tokenPolicy: Buffer.from(order.policyId!, 'hex'),
+				});
+
+		const userSignature = await wallet.signTx(transactionInfo.tx, true);
+
+		console.log(userSignature);
+
+		// await protocol.submit({
+		// 	tx: {
+		// 		content: transactionInfo.tx,
+		// 		encoding: 'hex',
+		// 	},
+		// 	witnesses: [
+		// 		// signature
+		// 		// Merchant Signature
+		// 		{
+		// 			signature: {
+		// 				content: '',
+		// 				encoding: 'hex',
+		// 			},
+		// 			key: {
+		// 				content: '',
+		// 				encoding: 'hex',
+		// 			},
+		// 			type: 'vkey',
+		// 		},
+		// 	],
+		// });
+
 		const paymentPromise = new Promise<string>(resolve => {
-			setTimeout(() => resolve('mock-tx-hash'), 2000);
+			setTimeout(() => resolve(transactionInfo.hash), 2000);
 		});
 
 		const txHash = await Promise.race([paymentPromise, timeoutPromise]);
@@ -86,11 +131,7 @@ export async function processCardanoPayment(
 export async function processMultiCurrencyPayments(
 	wallet: CardanoWalletAPI,
 	orders: OrderPaymentInfo[],
-	onProgress?: (
-		orderId: string,
-		status: 'processing' | 'completed' | 'failed',
-		result?: PaymentResult,
-	) => void,
+	onProgress?: (orderId: string, status: 'processing' | 'completed' | 'failed', result?: PaymentResult) => void,
 ): Promise<MultiCurrencyPaymentResult> {
 	const completedOrders: MultiCurrencyPaymentResult['completedOrders'] = [];
 	const failedOrders: MultiCurrencyPaymentResult['failedOrders'] = [];

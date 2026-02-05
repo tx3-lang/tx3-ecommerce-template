@@ -83,7 +83,7 @@ declare namespace Database {
 			items: OrderItemInput[];
 			token_id?: string | null;
 		}[];
-		currencies?: Record<string, { policy_id: string | null; asset_name: string | null; decimals: number | null; }>;
+		currencies?: Record<string, { policy_id: string | null; asset_name: string | null; decimals: number | null }>;
 	}
 
 	// Supported tokens table interface

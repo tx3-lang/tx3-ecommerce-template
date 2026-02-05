@@ -1,5 +1,11 @@
 import type { CartItem, CartItemWithCurrency } from './cart-storage';
-import { createCurrencyKey, createCurrencyKeyById, getCurrencySymbol, getCurrencyTypeById, groupItemsByCurrencyById } from './unified-formatter';
+import {
+	createCurrencyKey,
+	createCurrencyKeyById,
+	getCurrencySymbol,
+	getCurrencyTypeById,
+	groupItemsByCurrencyById,
+} from './unified-formatter';
 
 export interface CartTotals {
 	totalItems: number;
@@ -123,4 +129,3 @@ export function getOrdersDataFromCart(
 		currencies,
 	};
 }
-

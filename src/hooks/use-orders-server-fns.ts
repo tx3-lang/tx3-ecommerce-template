@@ -2,29 +2,39 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { confirmStockReservation, releaseStockReservation } from '@/lib/stock-reservation';
 // Hooks para llamar server functions con validación automática
 import {
-	createOrderServerFn,
+	createOrdersServerFn,
 	getOrderServerFn,
 	getUserOrdersServerFn,
 	updateOrderStatusServerFn,
+	validateAndReserveStockServerFn,
 } from '@/server-fns/orders';
 
-// Create order mutation using server function
-export function useCreateOrder() {
+/**
+ * Unified hook to create orders (single or multiple)
+ * Always returns Database.Order[] for consistency
+ * Single order → [order]
+ * Multi-currency → [order1, order2, ...]
+ */
+export function useCreateOrders() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: async (data: Database.CreateOrderData) => {
-			// Llamar a server function con validación automática
-			const result = await createOrderServerFn({ data });
+		mutationFn: async (data: {
+			wallet_address: string;
+			orders: Array<{
+				items: Database.OrderItemInput[];
+				token_id?: string | null;
+			}>;
+		}) => {
+			const result = await createOrdersServerFn({ data });
 
 			if (!result.success) {
-				throw new Error(result.message || 'Failed to create order');
+				throw new Error(result.message || 'Failed to create orders');
 			}
 
-			return result.order;
+			return result.orders;
 		},
 		onSuccess: () => {
-			// Invalidar caché para actualizaciones de stock
 			queryClient.invalidateQueries({ queryKey: ['products'] });
 			queryClient.invalidateQueries({ queryKey: ['orders'] });
 			queryClient.invalidateQueries({ queryKey: ['available-stock'] });
@@ -32,6 +42,38 @@ export function useCreateOrder() {
 		},
 		onError: error => {
 			console.error('Order creation failed:', error);
+		},
+	});
+}
+
+/**
+ * Hook to validate stock availability and reserve items for checkout
+ * Must be called before order creation to ensure items are available
+ */
+export function useValidateBulkStock() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: async (items: Array<{ product_id: string; quantity: number }>) => {
+			const result = await validateAndReserveStockServerFn({
+				data: {
+					cart_items: items,
+					reservation_minutes: 30,
+				},
+			});
+
+			if (!result.success) {
+				throw new Error(result.message || 'Stock validation failed');
+			}
+
+			return result;
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['products'] });
+			queryClient.invalidateQueries({ queryKey: ['available-stock'] });
+		},
+		onError: error => {
+			console.error('Stock validation failed:', error);
 		},
 	});
 }

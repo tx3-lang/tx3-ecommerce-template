@@ -1,0 +1,13 @@
+[protocol]
+name = "ecommerce-payments"
+scope = ""
+version = "0.0.0"
+description = ""
+main = "main.tx3"
+
+[ledger]
+family = "cardano"
+
+[[codegen]]
+plugin = "ts-client"
+output_dir = "../src/lib/tx3"

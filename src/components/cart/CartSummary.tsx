@@ -23,7 +23,6 @@ interface CartSummaryProps {
 
 export function CartSummary({
 	subtotal,
-	total,
 	itemCount,
 	currencyBreakdown,
 	compact = false,
@@ -43,7 +42,7 @@ export function CartSummary({
 							{data.currencySymbol} ({data.itemCount} items):
 						</span>
 						<span className={isCompact ? 'text-white' : 'font-medium'}>
-							{formatPriceSync(data.subtotal, data.policyId, data.assetName, { decimals: data.currencyDecimals})}
+							{formatPriceSync(data.subtotal, data.policyId, data.assetName, { decimals: data.currencyDecimals })}
 						</span>
 					</div>
 				);

@@ -131,6 +131,7 @@ export function createCurrencyKeyById(tokenId: string | null): string {
 	if (isAdaCurrencyById(tokenId)) {
 		return 'ADA';
 	}
+	// biome-ignore lint/style/noNonNullAssertion: we validate is not null on isAdaCurrencyById
 	return tokenId!;
 }
 

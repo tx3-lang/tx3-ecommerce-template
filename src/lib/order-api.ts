@@ -38,7 +38,10 @@ export async function createOrderWithStockReservation(
 				token_id: data.token_id,
 				status: 'pending',
 			})
-			.select()
+			.select(`
+				*,
+				supported_tokens (policy_id, asset_name, display_name, decimals)
+			`)
 			.single();
 
 		if (orderError) {
@@ -106,10 +109,7 @@ export async function updateOrderStatus(
 	error?: string,
 ): Promise<{ success: boolean; error?: string }> {
 	try {
-		const updateData: Partial<Database.Order> = {
-			status,
-			updated_at: new Date().toISOString(),
-		};
+		const updateData: Partial<Database.Order> = { status };
 
 		if (txHash) {
 			updateData.cardano_tx_hash = txHash;
@@ -118,8 +118,11 @@ export async function updateOrderStatus(
 		if (error) {
 			updateData.payment_error = error;
 		}
+		console.log(updateData);
 
-		const { error: updateError } = await supabase.from('orders').update(updateData).eq('id', orderId).select().single();
+		const { error: updateError } = await supabase.from('orders').update(updateData).eq('id', orderId);
+
+		console.log('order updated');
 
 		if (updateError) {
 			throw new Error(`Failed to update order: ${updateError.message}`);

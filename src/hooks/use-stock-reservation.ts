@@ -12,7 +12,6 @@ import {
 	releaseStockReservation,
 	reserveBulkStock,
 	reserveStock,
-	validateBulkStock,
 } from '@/lib/stock-reservation';
 
 // Types for the hooks
@@ -233,21 +232,6 @@ export function useValidateCartStock() {
 		},
 		onError: error => {
 			console.error('Cart stock validation failed:', error);
-		},
-	});
-}
-
-/**
- * Hook to validate stock for cart items in a single optimized database call
- * Recommended over useValidateCartStock for better performance with large carts
- */
-export function useValidateBulkStock() {
-	return useMutation({
-		mutationFn: async (cartItems: Array<{ product_id: string; quantity: number }>) => {
-			return validateBulkStock(cartItems);
-		},
-		onError: error => {
-			console.error('Bulk stock validation failed:', error);
 		},
 	});
 }

@@ -138,7 +138,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 			throw new Error(`Insufficient stock. Only ${product.stock} available.`);
 		}
 
-		const updatedItems = items.map(item => (item.productId === productId ? { ...item, quantity } : item));
+		const updatedItems = items.map(item =>
+			item.productId === productId ? { ...item, quantity, subtotal: quantity * item.product.price } : item,
+		);
 		await persistCart(updatedItems);
 	};
 

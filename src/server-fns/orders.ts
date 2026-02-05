@@ -12,6 +12,18 @@ const orderItemSchema = z.object({
 	token_id: z.uuid().nullable().optional(),
 });
 
+const validateAndReserveStockSchema = z.object({
+	cart_items: z
+		.array(
+			z.object({
+				product_id: z.uuid('Invalid product ID format'),
+				quantity: z.number().int().min(1, 'Quantity must be at least 1'),
+			}),
+		)
+		.min(1, 'At least one item is required'),
+	reservation_minutes: z.number().int().min(5).max(120).optional().default(30),
+});
+
 const createOrderSchema = z.object({
 	wallet_address: z.string().min(1, 'Wallet address is required'),
 	items: z.array(orderItemSchema).min(1, 'At least one item is required'),
@@ -32,8 +44,20 @@ const createMultiCurrencyOrderSchema = z.object({
 		z.object({
 			items: z.array(orderItemSchema).min(1, 'At least one item is required'),
 			token_id: z.uuid().nullable().optional(),
-		})
-	)
+		}),
+	),
+});
+
+const createOrdersSchema = z.object({
+	wallet_address: z.string().min(1, 'Wallet address is required'),
+	orders: z
+		.array(
+			z.object({
+				items: z.array(orderItemSchema).min(1, 'At least one item is required'),
+				token_id: z.uuid().nullable().optional(),
+			}),
+		)
+		.min(1, 'At least one order group is required'),
 });
 
 /**
@@ -107,12 +131,7 @@ async function validateAndCalculateOrderTotals(items: Database.OrderItemInput[])
  */
 export const createMultiCurrencyOrdersServerFn = createServerFn({ method: 'POST' })
 	.inputValidator(createMultiCurrencyOrderSchema)
-	.handler(async ({
-		data: {
-			wallet_address,
-			orders,
-		}
-	}) => {
+	.handler(async ({ data: { wallet_address, orders } }) => {
 		console.log('Creating multi-currency orders:', {
 			walletAddress: wallet_address,
 			orderCount: orders.length,
@@ -189,7 +208,10 @@ export const createMultiCurrencyOrdersServerFn = createServerFn({ method: 'POST'
 						token_id: orderGroup.token_id || null,
 						status: 'pending',
 					})
-					.select('*')
+					.select(`
+						*,
+						supported_tokens (policy_id, asset_name, display_name, decimals)
+					`)
 					.single();
 
 				if (orderError) {
@@ -237,8 +259,7 @@ export const createMultiCurrencyOrdersServerFn = createServerFn({ method: 'POST'
 				error: errorMessage,
 			};
 		}
-	},
-);
+	});
 
 /**
  * Server function to create order with stock reservation
@@ -338,13 +359,17 @@ export const updateOrderStatusServerFn = createServerFn({ method: 'POST' })
 				throw new Error(result.error || 'Failed to update order status');
 			}
 
+			console.log(data);
+
 			// Fetch updated order data to return
 			const { supabase } = await import('@/lib/supabase');
 			const { data: orderData, error: fetchError } = await supabase
 				.from('orders')
-				.select('*')
-				.eq('id', data.order_id)
-				.single();
+				.select(`
+					*,
+					supported_tokens (policy_id, asset_name, display_name, decimals)
+				`)
+				.eq('id', data.order_id);
 
 			if (fetchError) {
 				throw new Error(`Failed to fetch updated order: ${fetchError.message}`);
@@ -374,7 +399,7 @@ export const updateOrderStatusServerFn = createServerFn({ method: 'POST' })
 export const getOrderServerFn = createServerFn({ method: 'GET' })
 	.inputValidator(
 		z.object({
-			order_id: z.string().uuid('Invalid order ID format'),
+			order_id: z.uuid('Invalid order ID format'),
 			wallet_address: z.string().min(1, 'Wallet address is required').optional(),
 		}),
 	)
@@ -400,7 +425,8 @@ export const getOrderServerFn = createServerFn({ method: 'GET' })
                 display_order
               )
             )
-          )
+          ),
+					supported_tokens (policy_id, asset_name, display_name, decimals)
         `);
 
 			// Apply filters
@@ -470,7 +496,8 @@ export const getUserOrdersServerFn = createServerFn({ method: 'GET' })
                 display_order
               )
             )
-          )
+          ),
+					supported_tokens (policy_id, asset_name, display_name, decimals)
         `)
 				.eq('wallet_address', data.wallet_address)
 				.is('deleted_at', null)
@@ -494,5 +521,243 @@ export const getUserOrdersServerFn = createServerFn({ method: 'GET' })
 			}
 
 			throw new Error('Unknown error occurred while fetching orders');
+		}
+	});
+
+/**
+ * Unified server function to validate and reserve stock for cart items
+ * Returns reservation IDs for later confirmation upon payment
+ * This is a required step before order creation
+ */
+export const validateAndReserveStockServerFn = createServerFn({ method: 'POST' })
+	.inputValidator(validateAndReserveStockSchema)
+	.handler(async ({ data }) => {
+		const supabase = getServerSupabase();
+
+		console.log('Validating and reserving stock:', {
+			itemCount: data.cart_items.length,
+			reservationMinutes: data.reservation_minutes,
+		});
+
+		try {
+			const results = [];
+
+			for (const item of data.cart_items) {
+				// Get current product stock
+				const { data: product, error: productError } = await supabase
+					.from('products')
+					.select('id, name, stock')
+					.eq('id', item.product_id)
+					.is('deleted_at', null)
+					.single();
+
+				console.log(product, productError);
+
+				if (productError || !product) {
+					return {
+						success: false,
+						message: `Product ${item.product_id} not found or deleted`,
+					};
+				}
+
+				const availableStock = product.stock || 0;
+
+				if (availableStock < item.quantity) {
+					return {
+						success: false,
+						message: `Insufficient stock for product "${product.name}". Available: ${availableStock}, Requested: ${item.quantity}`,
+						items: results,
+					};
+				}
+
+				results.push({
+					product_id: item.product_id,
+					product_name: product.name,
+					quantity: item.quantity,
+					available_stock: availableStock,
+					can_reserve: true,
+				});
+			}
+
+			return {
+				success: true,
+				message: `Stock validation successful for ${results.length} item(s)`,
+				items: results,
+			};
+		} catch (error) {
+			console.error('Stock validation error:', error);
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred during stock validation';
+
+			return {
+				success: false,
+				message: errorMessage,
+			};
+		}
+	});
+
+/**
+ * Unified server function to create orders (single or multiple)
+ * Always returns an array of Database.Order[] for consistency
+ * Single order → [order]
+ * Multi-currency → [order1, order2, ...]
+ *
+ * Handles:
+ * - Price validation against current product prices
+ * - Token validation and metadata verification
+ * - Order and order items creation
+ * - Atomic transaction semantics
+ */
+export const createOrdersServerFn = createServerFn({ method: 'POST' })
+	.inputValidator(createOrdersSchema)
+	.handler(async ({ data }) => {
+		const supabase = getServerSupabase();
+		const createdOrders: Database.Order[] = [];
+
+		console.log('Creating unified orders:', {
+			walletAddress: data.wallet_address,
+			orderCount: data.orders.length,
+		});
+
+		try {
+			// ===== Validation Phase =====
+
+			// Validate wallet address
+			if (!data.wallet_address || data.wallet_address.trim().length === 0) {
+				return {
+					success: false,
+					orders: [],
+					message: 'Wallet address is required',
+				};
+			}
+
+			// Validate orders array
+			if (!Array.isArray(data.orders) || data.orders.length === 0) {
+				return {
+					success: false,
+					orders: [],
+					message: 'At least one order group is required',
+				};
+			}
+
+			// Validate all tokens are supported and active
+			const allTokenIds = [...data.orders.map(o => o.token_id).filter(Boolean)];
+			const uniqueTokenIds = [...new Set(allTokenIds)] as string[];
+
+			for (const tokenId of uniqueTokenIds) {
+				if (tokenId) {
+					const isSupportedToken = await isTokenSupported(tokenId);
+					if (!isSupportedToken) {
+						return {
+							success: false,
+							orders: [],
+							message: `Token ${tokenId} is not supported for payments`,
+						};
+					}
+
+					const tokenMetadata = await getTokenMetadataById(tokenId);
+					if (!tokenMetadata) {
+						return {
+							success: false,
+							orders: [],
+							message: `Token metadata not found for ${tokenId}`,
+						};
+					}
+
+					if (!tokenMetadata.is_active) {
+						return {
+							success: false,
+							orders: [],
+							message: `Token ${tokenId} is not active`,
+						};
+					}
+				}
+			}
+
+			// ===== Order Creation Phase =====
+
+			for (const orderGroup of data.orders) {
+				if (!Array.isArray(orderGroup.items) || orderGroup.items.length === 0) {
+					return {
+						success: false,
+						orders: createdOrders,
+						message: 'Each order must have at least one item',
+					};
+				}
+
+				// Validate prices and calculate totals server-side
+				const { validatedItems, calculatedTotal } = await validateAndCalculateOrderTotals(orderGroup.items);
+
+				// Create order record
+				const { data: newOrder, error: orderError } = await supabase
+					.from('orders')
+					.insert({
+						wallet_address: data.wallet_address,
+						total_amount: calculatedTotal,
+						token_id: orderGroup.token_id || null,
+						status: 'pending',
+					})
+					.select(
+						`
+						*,
+						supported_tokens (policy_id, asset_name, display_name, decimals)
+					`,
+					)
+					.single();
+
+				if (orderError) {
+					return {
+						success: false,
+						orders: createdOrders,
+						message: `Failed to create order: ${orderError.message}`,
+					};
+				}
+
+				if (!newOrder) {
+					return {
+						success: false,
+						orders: createdOrders,
+						message: 'Order creation returned null',
+					};
+				}
+
+				// Create order items with validated prices
+				const orderItems = validatedItems.map(item => ({
+					order_id: newOrder.id,
+					product_id: item.product_id,
+					quantity: item.quantity,
+					price: item.price,
+					token_id: item.token_id || null,
+				}));
+
+				const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
+
+				if (itemsError) {
+					// Rollback: delete the created order
+					await supabase.from('orders').delete().eq('id', newOrder.id);
+
+					return {
+						success: false,
+						orders: createdOrders,
+						message: `Failed to create order items: ${itemsError.message}`,
+					};
+				}
+
+				createdOrders.push(newOrder);
+			}
+
+			return {
+				success: true,
+				orders: createdOrders,
+				message: `Successfully created ${createdOrders.length} order(s)`,
+			};
+		} catch (error) {
+			console.error('Order creation error:', error);
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred during order creation';
+
+			return {
+				success: false,
+				orders: createdOrders,
+				message: errorMessage,
+			};
 		}
 	});

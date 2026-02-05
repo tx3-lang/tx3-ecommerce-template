@@ -42,7 +42,7 @@ function getStatusIcon(status: TransactionStatus) {
 			return <IconLoader className="w-5 h-5 text-blue-600 animate-spin" />;
 		case 'failed':
 			return <IconX className="w-5 h-5 text-red-600" />;
-		case 'pending':
+		// case 'pending':
 		default:
 			return <IconClock className="w-5 h-5 text-gray-400" />;
 	}
@@ -56,14 +56,13 @@ function getStatusColor(status: TransactionStatus) {
 			return 'border-blue-200 bg-blue-50';
 		case 'failed':
 			return 'border-red-200 bg-red-50';
-		case 'pending':
+		// case 'pending':
 		default:
 			return 'border-gray-200 bg-gray-50';
 	}
 }
 
 function PaymentStepComponent({
-	total,
 	isConnected,
 	isLoading,
 	availableWallets,
@@ -192,8 +191,7 @@ function PaymentStepComponent({
 
 													{paymentStatus?.txHash && (
 														<div className="mt-2 text-xs text-gray-500">
-															<span className="font-medium">Tx Hash:</span>{' '}
-															{paymentStatus.txHash.substring(0, 16)}...
+															<span className="font-medium">Tx Hash:</span> {paymentStatus.txHash}...
 														</div>
 													)}
 												</div>
@@ -206,9 +204,7 @@ function PaymentStepComponent({
 														<span className="text-sm font-medium text-blue-600">Processing...</span>
 													)}
 													{status === 'failed' && <span className="text-sm font-medium text-red-600">Failed</span>}
-													{status === 'pending' && (
-														<span className="text-sm font-medium text-gray-400">Pending</span>
-													)}
+													{status === 'pending' && <span className="text-sm font-medium text-gray-400">Pending</span>}
 												</div>
 											</div>
 										</div>
@@ -242,7 +238,7 @@ function PaymentStepComponent({
 				{isConnected && !hasStartedPayments && (
 					<Button onClick={onPayment} disabled={isLoading}>
 						{isLoading ? <Spinner /> : null}
-						{hasMultiplePayments ? 'Start Payments' : `Pay ${formatPriceSync(total, null, null)}`}
+						Start Payments
 					</Button>
 				)}
 			</div>

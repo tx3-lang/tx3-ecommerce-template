@@ -56,7 +56,6 @@ export const Route = createFileRoute('/(shop)/product/$productId')({
 	head: ({ loaderData, params }) => {
 		const { seoData } = loaderData || {};
 
-		
 		if (seoData) {
 			// Get the first image if available, otherwise use placeholder
 			const productImage = seoData.product_images?.[0]?.image_url || '/images/product-placeholder.jpg';
@@ -65,7 +64,11 @@ export const Route = createFileRoute('/(shop)/product/$productId')({
 				name: seoData.name,
 				description: seoData.description || 'Premium product available on our e-commerce platform',
 				price: convertFromSmallestUnit(seoData.price, seoData.supported_tokens, 6),
-				currency: getCurrencySymbol(seoData.supported_tokens?.policy_id ?? null, seoData.supported_tokens?.asset_name ?? null, seoData.supported_tokens),
+				currency: getCurrencySymbol(
+					seoData.supported_tokens?.policy_id ?? null,
+					seoData.supported_tokens?.asset_name ?? null,
+					seoData.supported_tokens,
+				),
 				image: productImage,
 				category: 'General',
 				productId: params.productId,
