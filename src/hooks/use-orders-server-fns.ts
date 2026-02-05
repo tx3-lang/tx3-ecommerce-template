@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { confirmStockReservation, releaseStockReservation } from '@/lib/stock-reservation';
 // Hooks para llamar server functions con validación automática
 import {
 	createOrdersServerFn,
@@ -173,56 +172,6 @@ export function useOrder(orderId?: string) {
 		},
 		enabled: !!orderId,
 		staleTime: 5 * 60 * 1000, // 5 minutos
-	});
-}
-
-// Confirmar reservas de stock (para pago exitoso)
-export function useConfirmStockReservation() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({ orderId }: { orderId: string }) => {
-			const result = await confirmStockReservation(orderId);
-
-			if (!result.success) {
-				throw new Error(result.error || 'Failed to confirm stock reservation');
-			}
-
-			return result;
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['products'] });
-			queryClient.invalidateQueries({ queryKey: ['available-stock'] });
-			queryClient.invalidateQueries({ queryKey: ['orders'] });
-		},
-		onError: error => {
-			console.error('Stock confirmation failed:', error);
-		},
-	});
-}
-
-// Liberar reservas de stock (para pago fallido o cancelación)
-export function useReleaseStockReservation() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({ orderId, reason }: { orderId: string; reason?: string }) => {
-			const result = await releaseStockReservation(orderId, reason);
-
-			if (!result.success) {
-				throw new Error(result.error || 'Failed to release stock reservation');
-			}
-
-			return result;
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['products'] });
-			queryClient.invalidateQueries({ queryKey: ['available-stock'] });
-			queryClient.invalidateQueries({ queryKey: ['orders'] });
-		},
-		onError: error => {
-			console.error('Stock release failed:', error);
-		},
 	});
 }
 

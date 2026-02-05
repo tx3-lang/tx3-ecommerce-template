@@ -1,6 +1,5 @@
 // Re-export all lib modules for easier imports
 
-export * from './stock-reservation';
 export * from './supabase';
 export {
 	getTokenMetadata,

@@ -24,7 +24,7 @@ BEGIN
             RAISE EXCEPTION 'Stock reservation confirmation failed for order %: %', NEW.id, v_error;
         END IF;
     ELSIF NEW.status IN ('payment_failed', 'cancelled') THEN
-        v_result := release_stock_reservation(NEW.id, NEW.status);
+        v_result := release_stock_reservation(NEW.id, NEW.status::TEXT);
         v_error := v_result->>'error';
 
         IF COALESCE((v_result->>'success')::BOOLEAN, false) = false

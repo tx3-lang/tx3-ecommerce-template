@@ -4,7 +4,19 @@ import { z } from 'zod';
 
 // Lib
 import { getTokenMetadataById, isTokenSupported } from '@/lib';
-import type { BulkReservationResult } from '@/lib/stock-reservation';
+
+interface BulkReservationResult {
+	success: boolean;
+	items_reserved?: number;
+	successful?: number;
+	failed?: number;
+	details?: Array<{
+		product_id: string;
+		quantity: number;
+		success: boolean;
+	}>;
+	error?: string;
+}
 
 // Validation schemas using Zod (consistent with project patterns)
 const orderItemSchema = z.object({

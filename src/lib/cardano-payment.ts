@@ -52,7 +52,6 @@ const MERCHANT_ADDRESS = import.meta.env.VITE_MERCHANT_ADDRESS || '';
 
 export async function processCardanoPayment(wallet: CardanoWalletAPI, order: OrderPaymentInfo): Promise<PaymentResult> {
 	try {
-
 		// Determine payment type
 		const isAdaPayment = !order.policyId && !order.assetName;
 
