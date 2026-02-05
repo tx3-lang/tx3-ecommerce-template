@@ -2,15 +2,18 @@ import { Link } from '@tanstack/react-router';
 
 // Components
 import { Button } from '@/components/ui/button';
-
 // Lib
-import { formatLovelaceToAda } from '@/lib/ada-formatter';
+import { brandConfig } from '@/config/brand';
+import type { CartTotals } from '@/lib/cart-calculations';
+import { formatPriceSync } from '@/lib/unified-formatter';
 import { cn } from '@/lib/utils';
 
 interface CartSummaryProps {
-	subtotal: number;
-	total: number;
-	itemCount: number;
+	subtotal?: number;
+	total?: number;
+	itemCount?: number;
+	currencyType?: 'ADA' | 'TOKEN' | 'MIXED';
+	currencyBreakdown: CartTotals['currencyBreakdown'];
 	compact?: boolean; // For mini-cart display
 	showCheckoutButton?: boolean;
 	sticky?: boolean;
@@ -21,8 +24,8 @@ interface CartSummaryProps {
 
 export function CartSummary({
 	subtotal,
-	total,
 	itemCount,
+	currencyBreakdown,
 	compact = false,
 	showCheckoutButton = true,
 	sticky = false,
@@ -30,24 +33,42 @@ export function CartSummary({
 	onCheckout,
 	disabled = false,
 }: CartSummaryProps) {
+	// Helper to render currency breakdown
+	const enableShipping = brandConfig.features.enableShipping;
+	const renderCurrencyBreakdown = (isCompact: boolean = false) => (
+		<div className={cn('space-y-2', isCompact && 'space-y-2')}>
+			{Object.entries(currencyBreakdown).map(([currencyKey, data]) => {
+				return (
+					<div key={currencyKey} className={cn('flex justify-between', isCompact && 'text-sm')}>
+						<span className={isCompact ? 'text-gray-300' : 'text-gray-600'}>
+							{data.currencySymbol} ({data.itemCount} items):
+						</span>
+						<span className={isCompact ? 'text-white' : 'font-medium'}>
+							{formatPriceSync(data.subtotal, data.policyId, data.assetName, { decimals: data.currencyDecimals })}
+						</span>
+					</div>
+				);
+			})}
+		</div>
+	);
+
 	// Compact version for mini-cart
 	if (compact) {
 		return (
 			<div className={cn('border-t border-gray-700 p-4 bg-gray-800', className)}>
-				<div className="space-y-2">
-					<div className="flex justify-between text-sm">
-						<span className="text-gray-300">Subtotal ({itemCount} items):</span>
-						<span className="text-white">{formatLovelaceToAda(subtotal, 2)}</span>
-					</div>
-					<div className="flex justify-between text-sm">
+				{renderCurrencyBreakdown(true)}
+
+				{enableShipping && (
+					<div className="flex justify-between text-sm mt-2 pt-2 border-t border-gray-700">
 						<span className="text-gray-300">Shipping:</span>
 						<span className="text-green-400">Free</span>
 					</div>
-					<div className="flex justify-between font-semibold pt-2 border-t border-gray-700">
-						<span className="text-white">Total:</span>
-						<span className="text-white">{formatLovelaceToAda(total, 2)}</span>
-					</div>
-				</div>
+				)}
+
+				{/* <div className="flex justify-between font-semibold pt-2">
+					<span className="text-white">Total:</span>
+					<span className="text-white">{formatPriceSync(total || 0, null, null)}</span>
+				</div> */}
 
 				{showCheckoutButton && (
 					<div className="mt-4">
@@ -67,36 +88,46 @@ export function CartSummary({
 		<div className={cn('bg-white border rounded-lg p-6 space-y-4', sticky && 'lg:sticky lg:top-6', className)}>
 			<h3 className="text-lg font-semibold">Order Summary</h3>
 
+			{/* Currency Breakdown */}
 			<div className="space-y-3">
-				<div className="flex justify-between text-sm">
-					<span className="text-gray-600">
-						Subtotal ({itemCount} {itemCount === 1 ? 'item' : 'items'})
-					</span>
-					<span className="font-medium">{formatLovelaceToAda(subtotal, 2)}</span>
-				</div>
+				{Object.keys(currencyBreakdown || {}).length > 0 ? (
+					<div>
+						<h4 className="text-sm font-medium text-gray-700 mb-2">Order Details by Currency:</h4>
+						{renderCurrencyBreakdown()}
+					</div>
+				) : (
+					<div className="flex justify-between text-sm">
+						<span className="text-gray-600">
+							Subtotal ({itemCount || 0} {(itemCount || 0) === 1 ? 'item' : 'items'})
+						</span>
+						<span className="font-medium">{formatPriceSync(subtotal || 0, null, null)}</span>
+					</div>
+				)}
 
-				<div className="flex justify-between text-sm">
-					<span className="text-gray-600">Shipping</span>
-					<span className="text-green-600 font-medium">Free</span>
-				</div>
+				{enableShipping && (
+					<div className="flex justify-between text-sm">
+						<span className="text-gray-600">Shipping</span>
+						<span className="text-green-600 font-medium">Free</span>
+					</div>
+				)}
 
-				<div className="flex justify-between text-sm">
+				{/* <div className="flex justify-between text-sm">
 					<span className="text-gray-600">Tax</span>
 					<span className="font-medium">-</span>
-				</div>
+				</div> */}
 
-				<hr className="my-3" />
+				{/* <hr className="my-3" />	
 
 				<div className="flex justify-between text-lg font-semibold">
 					<span>Total</span>
-					<span>{formatLovelaceToAda(total, 2)}</span>
-				</div>
+					<span>{formatPriceSync(total || 0, null, null)}</span>
+				</div> */}
 			</div>
 
 			{showCheckoutButton && (
 				<div className="space-y-3">
-					<Link to="/checkout" disabled={itemCount === 0 || disabled}>
-						<Button className="w-full" size="lg" disabled={itemCount === 0 || disabled}>
+					<Link to="/checkout" disabled={(itemCount || 0) === 0 || disabled}>
+						<Button className="w-full" size="lg" disabled={(itemCount || 0) === 0 || disabled}>
 							Proceed to Checkout
 						</Button>
 					</Link>

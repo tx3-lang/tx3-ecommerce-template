@@ -29,10 +29,7 @@ declare interface BrandConfig {
 		address?: string;
 	};
 	features: {
-		enableGuestCheckout: boolean;
-		enableUserRegistration: boolean;
-		enableStockManagement: boolean;
-		enableMultipleImages: boolean;
+		enableShipping: boolean;
 	};
 }
 

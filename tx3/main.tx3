@@ -1,0 +1,56 @@
+party Buyer;
+
+party Merchant;
+
+
+tx pay_with_ada(
+    quantity: Int
+) {
+    input source {
+        from: Buyer,
+        min_amount: Ada(quantity) + fees,
+    }
+    
+    output payment {
+        to: Merchant,
+        amount: Ada(quantity),
+    }
+
+    output {
+        to: Buyer,
+        amount: source - Ada(quantity) - fees,
+    }
+
+    signers {
+        Merchant,
+    }
+}
+
+tx pay_with_tokens(
+    quantity: Int,
+    token_policy: Bytes,
+    asset_name: Bytes,
+) {
+    locals {
+        tokens: AnyAsset(token_policy, asset_name, quantity),
+    }
+
+    input* source {
+        from: Buyer,
+        min_amount: fees + tokens + min_utxo(payment),
+    }
+
+    output payment {
+        to: Merchant,
+        amount: tokens + min_utxo(payment),
+    }
+
+    output {
+        to: Buyer,
+        amount: source - tokens - fees - min_utxo(payment),
+    }
+
+    signers {
+        Merchant,
+    }
+}

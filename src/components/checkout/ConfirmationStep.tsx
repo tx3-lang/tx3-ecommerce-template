@@ -6,17 +6,17 @@ import { memo } from 'react';
 import { Button } from '@/components/ui/button';
 
 // Lib
-import { formatLovelaceToAda } from '@/lib/ada-formatter';
+import { formatPriceSyncById } from '@/lib/unified-formatter';
 
 interface ConfirmationStepProps {
-	total: number;
-	createdOrder: Database.Order | null;
+	createdOrders: Database.Order[];
 	error?: string | null;
 	onRetry: () => void;
 }
 
-function ConfirmationStepComponent({ total, createdOrder, error, onRetry }: ConfirmationStepProps) {
+function ConfirmationStepComponent({ createdOrders, error, onRetry }: ConfirmationStepProps) {
 	const navigate = useNavigate();
+	const hasOrders = createdOrders.length > 0;
 
 	return (
 		<div className="space-y-6 text-center">
@@ -40,23 +40,51 @@ function ConfirmationStepComponent({ total, createdOrder, error, onRetry }: Conf
 				<div className="space-y-4">
 					<p className="text-gray-600">Thank you for your order! Your payment has been processed successfully.</p>
 
-					{createdOrder && (
+					{hasOrders && (
+						<div className="space-y-4 text-left">
+							<h3 className="font-semibold">Order Details</h3>
+							{createdOrders.map(order => (
+								<div key={order.id} className="p-4 bg-gray-50 rounded-lg space-y-3">
+									<div className="flex items-start justify-between gap-4">
+										<div>
+											<p className="text-sm text-gray-500">Order ID</p>
+											<p className="font-mono text-sm break-all">{order.id}</p>
+										</div>
+										<Button
+											variant="outline"
+											onClick={() => navigate({ to: '/order-confirmation/$orderId', params: { orderId: order.id } })}
+										>
+											View Details
+										</Button>
+									</div>
+									<div className="space-y-2 text-sm">
+										<div className="flex justify-between">
+											<span>Total Amount:</span>
+											<span className="font-semibold">
+												{formatPriceSyncById(order.total_amount, order.token_id, {
+													compact: false,
+													supportedToken: order.supported_tokens,
+												})}
+											</span>
+										</div>
+										<div className="flex justify-between">
+											<span>Tx Hash:</span>
+											<span className="font-mono text-xs break-all">{order.cardano_tx_hash || 'Not available'}</span>
+										</div>
+										<div className="flex justify-between">
+											<span>Status:</span>
+											<span className="text-green-600 font-medium">Paid</span>
+										</div>
+									</div>
+								</div>
+							))}
+						</div>
+					)}
+
+					{!hasOrders && (
 						<div className="p-4 bg-gray-50 rounded-lg text-left">
 							<h3 className="font-semibold mb-3">Order Details</h3>
-							<div className="space-y-2 text-sm">
-								<div className="flex justify-between">
-									<span>Order ID:</span>
-									<span className="font-mono">{createdOrder.id}</span>
-								</div>
-								<div className="flex justify-between">
-									<span>Total Amount:</span>
-									<span className="font-semibold">{formatLovelaceToAda(total, 2)}</span>
-								</div>
-								<div className="flex justify-between">
-									<span>Status:</span>
-									<span className="text-green-600 font-medium">Paid</span>
-								</div>
-							</div>
+							<p className="text-sm text-gray-600">We could not load your order details. Please try again.</p>
 						</div>
 					)}
 
@@ -73,15 +101,6 @@ function ConfirmationStepComponent({ total, createdOrder, error, onRetry }: Conf
 						<Button onClick={() => navigate({ to: '/products' })} className="flex-1">
 							Continue Shopping
 						</Button>
-						{createdOrder && (
-							<Button
-								variant="outline"
-								onClick={() => navigate({ to: '/order-confirmation/$orderId', params: { orderId: createdOrder.id } })}
-								className="flex-1"
-							>
-								View Order Details
-							</Button>
-						)}
 					</div>
 				</div>
 			)}

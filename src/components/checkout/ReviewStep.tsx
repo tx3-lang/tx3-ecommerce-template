@@ -1,18 +1,19 @@
 import { IconAlertCircle, IconMapPin } from '@tabler/icons-react';
 import { useNavigate } from '@tanstack/react-router';
 import { memo } from 'react';
-
 // Components
 import { CartItem } from '@/components/cart/CartItem';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+// Config
+import { brandConfig } from '@/config/brand';
 
 // Hooks
 import { useCart } from '@/hooks/use-cart';
 import { useCartItems } from '@/hooks/use-cart-items';
 
-// Lib
-import { formatLovelaceToAda } from '@/lib/ada-formatter';
+// Local
+import { OrderSummary } from './OrderSummary';
 
 interface ReviewStepProps {
 	total: number;
@@ -22,7 +23,7 @@ interface ReviewStepProps {
 
 function ReviewStepComponent({ total, isLoading, onProceed }: ReviewStepProps) {
 	const navigate = useNavigate();
-	const { items, updateQuantity, removeItem } = useCart();
+	const { items, updateQuantity, removeItem, currencyBreakdown } = useCart();
 	const { cartItemsWithStock, hasStockIssues, isCheckoutBlocked } = useCartItems({
 		enableStockValidation: true,
 	});
@@ -72,37 +73,24 @@ function ReviewStepComponent({ total, isLoading, onProceed }: ReviewStepProps) {
 			</div>
 
 			{/* Order Summary */}
-			<div className="bg-white border rounded-lg p-6">
-				<h3 className="font-semibold mb-4">Order Summary</h3>
-				<div className="space-y-3">
-					<div className="flex justify-between text-sm">
-						<span>Subtotal ({items.length} items)</span>
-						<span>{formatLovelaceToAda(total, 2)}</span>
-					</div>
-					<div className="flex justify-between text-sm">
-						<span>Shipping</span>
-						<span className="text-green-600">Free</span>
-					</div>
-					<div className="flex justify-between text-sm">
-						<span>Tax</span>
-						<span>-</span>
-					</div>
-					<div className="border-t pt-3">
-						<div className="flex justify-between text-lg font-semibold">
-							<span>Total</span>
-							<span>{formatLovelaceToAda(total, 2)}</span>
-						</div>
-					</div>
-				</div>
-			</div>
-
+			<OrderSummary
+				total={total}
+				currencyBreakdown={currencyBreakdown}
+				showShippingAndTax={true}
+				itemsLength={items.length}
+				showMultiPaymentWarning={true}
+			/>
 			<div className="flex justify-between">
 				<Button variant="outline" onClick={() => navigate({ to: '/cart' })} disabled={isLoading}>
 					Back to Cart
 				</Button>
 				<Button onClick={onProceed} disabled={isLoading || items.length === 0 || isCheckoutBlocked}>
 					{isLoading ? <Spinner /> : null}
-					{isCheckoutBlocked ? 'Cannot Proceed' : 'Proceed to Shipping'}
+					{isCheckoutBlocked
+						? 'Cannot Proceed'
+						: brandConfig.features.enableShipping
+							? 'Proceed to Shipping'
+							: 'Proceed to Payment'}
 				</Button>
 			</div>
 		</div>

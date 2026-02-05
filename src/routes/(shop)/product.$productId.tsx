@@ -6,14 +6,15 @@ import { useEffect, useId, useState } from 'react';
 import { QuantitySelector } from '@/components/ui/quantity-selector';
 
 // Hooks
+import { brandConfig } from '@/config/brand';
 import { useCart } from '@/hooks/use-cart';
 import { useProduct } from '@/hooks/use-products';
 
 // Lib
-import { ADA_SYMBOL, formatLovelaceToAda } from '@/lib/ada-formatter';
 import type { CartItem } from '@/lib/cart-storage';
 import { generateProductMetaTags } from '@/lib/seo';
 import { getSupabaseConfig } from '@/lib/supabase-seo';
+import { ADA_SYMBOL, convertFromSmallestUnit, formatPriceSyncById, getCurrencySymbol } from '@/lib/unified-formatter';
 
 export const Route = createFileRoute('/(shop)/product/$productId')({
 	component: ProductDetail,
@@ -30,12 +31,13 @@ export const Route = createFileRoute('/(shop)/product/$productId')({
 				.select(`
 					name,
 					description,
-					price_lovelace,
-					product_images (image_url, alt_text, display_order)
+					price,
+					product_images (image_url, alt_text, display_order),
+					supported_tokens (policy_id, asset_name, display_name, decimals)
 				`)
 				.eq('id', productId)
 				.eq('is_active', true)
-				.single();
+				.single<Database.Product>();
 
 			if (error) {
 				// Return null for 404 cases, let component handle it
@@ -56,14 +58,18 @@ export const Route = createFileRoute('/(shop)/product/$productId')({
 		const { seoData } = loaderData || {};
 
 		if (seoData) {
-			const priceInAda = seoData.price_lovelace / 1_000_000;
 			// Get the first image if available, otherwise use placeholder
 			const productImage = seoData.product_images?.[0]?.image_url || '/images/product-placeholder.jpg';
 
 			const metaTags = generateProductMetaTags({
 				name: seoData.name,
 				description: seoData.description || 'Premium product available on our e-commerce platform',
-				price: priceInAda,
+				price: convertFromSmallestUnit(seoData.price, seoData.supported_tokens, 6),
+				currency: getCurrencySymbol(
+					seoData.supported_tokens?.policy_id ?? null,
+					seoData.supported_tokens?.asset_name ?? null,
+					seoData.supported_tokens,
+				),
 				image: productImage,
 				category: 'General',
 				productId: params.productId,
@@ -84,6 +90,7 @@ function ProductDetail() {
 	const { data: product, isLoading, error } = useProduct(productId);
 	const { addItem, getItemQuantity, updateProductStock } = useCart();
 	const [quantity, setQuantity] = useState(1);
+	const enableShipping = brandConfig.features.enableShipping;
 
 	const currentProductQuantity = getItemQuantity(productId);
 	const maxQuantity = product ? product.stock - currentProductQuantity : 1;
@@ -148,7 +155,9 @@ function ProductDetail() {
 		addItem(product.id, quantity, product);
 	};
 
-	const priceInAdaString = formatLovelaceToAda(product.price_lovelace, 2);
+	const priceString = formatPriceSyncById(product.price, product.token_id, {
+		supportedToken: product.supported_tokens,
+	});
 
 	return (
 		<div className="container mx-auto px-4 py-8">
@@ -208,7 +217,7 @@ function ProductDetail() {
 					{/* Price and Actions */}
 					<div className="border-t border-b border-gray-200 py-6">
 						<div className="flex items-baseline mb-6">
-							<span className="text-3xl font-bold text-gray-900">{priceInAdaString}</span>
+							<span className="text-3xl font-bold text-gray-900">{priceString}</span>
 							{product.stock > 0 ? (
 								<span className="ml-4 text-sm text-green-600 font-medium">{product.stock} in stock</span>
 							) : (
@@ -252,12 +261,20 @@ function ProductDetail() {
 					</div>
 
 					{/* Benefits */}
-					<div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-6 border-t border-gray-200">
-						<div className="text-center p-4">
-							<IconTruck size={32} className="mx-auto mb-2 text-primary" />
-							<p className="text-sm font-medium text-gray-900">Free Shipping</p>
-							<p className="text-xs text-gray-600">Orders over 100 {ADA_SYMBOL}</p>
-						</div>
+					<div
+						className={
+							enableShipping
+								? 'grid grid-cols-1 sm:grid-cols-3 gap-4 pt-6 border-t border-gray-200'
+								: 'grid grid-cols-1 sm:grid-cols-2 gap-4 pt-6 border-t border-gray-200'
+						}
+					>
+						{enableShipping && (
+							<div className="text-center p-4">
+								<IconTruck size={32} className="mx-auto mb-2 text-primary" />
+								<p className="text-sm font-medium text-gray-900">Free Shipping</p>
+								<p className="text-xs text-gray-600">Orders over 100 {ADA_SYMBOL}</p>
+							</div>
+						)}
 						<div className="text-center p-4">
 							<IconShield size={32} className="mx-auto mb-2 text-primary" />
 							<p className="text-sm font-medium text-gray-900">1 Year Warranty</p>

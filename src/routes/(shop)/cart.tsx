@@ -7,6 +7,7 @@ import { CartSummary } from '@/components/cart/CartSummary';
 import { EmptyCart } from '@/components/cart/EmptyCart';
 
 // Hooks
+import { brandConfig } from '@/config/brand';
 import { useCart } from '@/hooks/use-cart';
 import { useCartItems } from '@/hooks/use-cart-items';
 
@@ -15,10 +16,11 @@ export const Route = createFileRoute('/(shop)/cart')({
 });
 
 function CartPage() {
-	const { total, itemCount, updateQuantity, removeItem, isEmpty, isLoaded, refresh } = useCart();
+	const { total, itemCount, updateQuantity, removeItem, isEmpty, isLoaded, refresh, currencyBreakdown } = useCart();
 	const { cartItemsWithStock, hasStockIssues, isValidatingStock } = useCartItems({
 		enableStockValidation: true,
 	});
+	const enableShipping = brandConfig.features.enableShipping;
 
 	// Show skeleton while cart is loading
 	if (!isLoaded) {
@@ -98,7 +100,7 @@ function CartPage() {
 						{/* Order Summary Section */}
 						<div className="lg:col-span-1">
 							<CartSummary
-								subtotal={total}
+								currencyBreakdown={currencyBreakdown}
 								total={total}
 								itemCount={itemCount}
 								sticky
@@ -111,14 +113,24 @@ function CartPage() {
 
 				{/* Additional Information */}
 				{!isEmpty && (
-					<div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
-						<div className="text-center p-6 bg-white rounded-lg border">
-							<div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-								<span className="text-blue-600 text-xl">🚚</span>
+					<div
+						className={
+							enableShipping
+								? 'mt-12 grid grid-cols-1 md:grid-cols-3 gap-6'
+								: 'mt-12 grid grid-cols-1 md:grid-cols-2 gap-6'
+						}
+					>
+						{enableShipping && (
+							<div className="text-center p-6 bg-white rounded-lg border">
+								<div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+									<span className="text-blue-600 text-xl">🚚</span>
+								</div>
+								<h3 className="font-semibold mb-2">Free Shipping</h3>
+								<p className="text-sm text-gray-600">
+									Enjoy free shipping on all orders. No minimum purchase required.
+								</p>
 							</div>
-							<h3 className="font-semibold mb-2">Free Shipping</h3>
-							<p className="text-sm text-gray-600">Enjoy free shipping on all orders. No minimum purchase required.</p>
-						</div>
+						)}
 
 						<div className="text-center p-6 bg-white rounded-lg border">
 							<div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">

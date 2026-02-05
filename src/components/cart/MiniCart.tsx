@@ -5,6 +5,7 @@ import { CartItem } from '@/components/cart/CartItem';
 import { CartSummary } from '@/components/cart/CartSummary';
 import { EmptyCart } from '@/components/cart/EmptyCart';
 import { useCart } from '@/hooks/use-cart';
+
 import { cn } from '@/lib/utils';
 
 interface MiniCartProps {
@@ -13,7 +14,7 @@ interface MiniCartProps {
 }
 
 export function MiniCart({ isOpen, onClose }: MiniCartProps) {
-	const { items, total, itemCount, updateQuantity, removeItem } = useCart();
+	const { items, total, itemCount, updateQuantity, removeItem, currencyBreakdown } = useCart();
 	const dropdownRef = useRef<HTMLDivElement>(null);
 
 	// Handle click outside
@@ -76,19 +77,43 @@ export function MiniCart({ isOpen, onClose }: MiniCartProps) {
 				)}
 			>
 				{/* Header */}
-				<div className="flex items-center justify-between p-4 border-b border-gray-700 bg-gray-800">
-					<div className="flex items-center gap-2">
-						<IconShoppingCart size={20} className="text-gray-300" />
-						<h3 className="font-semibold text-white">Shopping Cart {itemCount > 0 && `(${itemCount})`}</h3>
+				<div className="p-4 border-b border-gray-700 bg-gray-800">
+					<div className="flex items-center justify-between mb-3">
+						<div className="flex items-center gap-2">
+							<IconShoppingCart size={20} className="text-gray-300" />
+							<h3 className="font-semibold text-white">Shopping Cart {itemCount > 0 && `(${itemCount})`}</h3>
+						</div>
+						<button
+							type="button"
+							onClick={onClose}
+							className="p-1 hover:bg-gray-700 rounded-md transition-colors"
+							aria-label="Close cart"
+						>
+							<IconX size={18} className="text-gray-400 hover:text-white" />
+						</button>
 					</div>
-					<button
-						type="button"
-						onClick={onClose}
-						className="p-1 hover:bg-gray-700 rounded-md transition-colors"
-						aria-label="Close cart"
-					>
-						<IconX size={18} className="text-gray-400 hover:text-white" />
-					</button>
+
+					{/* Currency Badges */}
+					{currencyBreakdown && Object.keys(currencyBreakdown).length > 0 && (
+						<div className="flex flex-wrap gap-2">
+							{Object.entries(currencyBreakdown).map(([currencyKey, data]) => {
+								const isAda = data.currencySymbol === '₳';
+
+								return (
+									<span
+										key={currencyKey}
+										className={`px-2 py-1 rounded text-xs font-medium ${
+											isAda
+												? 'bg-blue-100 text-blue-700 border border-blue-200'
+												: 'bg-purple-100 text-purple-700 border border-purple-200'
+										}`}
+									>
+										{data.currencySymbol} ({data.itemCount})
+									</span>
+								);
+							})}
+						</div>
+					)}
 				</div>
 
 				{/* Cart Content */}
@@ -134,7 +159,7 @@ export function MiniCart({ isOpen, onClose }: MiniCartProps) {
 				{/* Footer with Summary */}
 				{items.length > 0 && (
 					<CartSummary
-						subtotal={total}
+						currencyBreakdown={currencyBreakdown}
 						total={total}
 						itemCount={itemCount}
 						onCheckout={() => {

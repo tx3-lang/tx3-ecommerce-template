@@ -12,7 +12,8 @@ export function useProducts() {
 				.from('products')
 				.select(`
           *,
-          product_images (image_url, alt_text, display_order)
+          product_images (image_url, alt_text, display_order),
+					supported_tokens (policy_id, asset_name, display_name, decimals)
         `)
 				.eq('is_active', true)
 				.is('deleted_at', null)
@@ -35,7 +36,8 @@ export function useProduct(productId: string) {
 				.from('products')
 				.select(`
           *,
-          product_images (image_url, alt_text, display_order)
+          product_images (image_url, alt_text, display_order),
+					supported_tokens (policy_id, asset_name, display_name, decimals)
         `)
 				.eq('id', productId)
 				.eq('is_active', true)
