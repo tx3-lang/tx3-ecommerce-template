@@ -22,7 +22,6 @@ tx pay_with_ada(
     }
 
     signers {
-        Buyer,
         Merchant,
     }
 }
@@ -52,7 +51,6 @@ tx pay_with_tokens(
     }
 
     signers {
-        Buyer,
         Merchant,
     }
 }

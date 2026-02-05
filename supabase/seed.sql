@@ -13,8 +13,8 @@ INSERT INTO supported_tokens (
   is_active
 ) VALUES 
   ('1a2b3c4d5e6f7890123456789012345678901234567890123456789012345678', '446f6765436f696e', 'DogeCoin', 2, true),
-  ('9f8e7d6c5b4a3210fedcba9876543210fedcba9876543210fedcba9876543210', '4e465466726f6d5370616365', null, 0, true),
-  ('abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890', '5574696c697479546f6b656e', 'UtilityToken', 6, true);
+  ('abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890', '5574696c697479546f6b656e', 'UtilityToken', 6, true),
+  ('0030630e5173e8be7f0a004cda6f6958f19f88a5179cfe6af87efdf7', '425549444c45525f524557415244', null, 0, true); -- REAL PREVIEW TOKEN for testing
 
 -- Insert ADA products (token_id = NULL)
 INSERT INTO products (name, description, price, stock, is_active, is_featured, token_id) VALUES
@@ -84,7 +84,7 @@ INSERT INTO products (
   token_id
 ) VALUES 
   ('Crypto Trading Bot License', 'Advanced automated trading bot with AI-powered strategies for cryptocurrency markets.', 250, 5, true, true, (SELECT id FROM supported_tokens WHERE display_name = 'DogeCoin' LIMIT 1)),
-  ('Digital Art NFT', 'Unique digital artwork from Space collection. One-of-a-kind piece.', 1, 1, true, true, (SELECT id FROM supported_tokens WHERE asset_name = '4e465466726f6d5370616365' LIMIT 1)),
+  ('Digital Art NFT', 'Unique digital artwork from Space collection. One-of-a-kind piece.', 1, 1, true, true, (SELECT id FROM supported_tokens WHERE asset_name = '425549444c45525f524557415244' LIMIT 1)),
   ('Premium Subscription', 'Monthly premium subscription with access to all features and priority support.', 5000000, 100, true, false, (SELECT id FROM supported_tokens WHERE display_name = 'UtilityToken' LIMIT 1));
 
 

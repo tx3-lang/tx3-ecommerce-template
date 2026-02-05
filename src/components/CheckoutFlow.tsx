@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 // Components
 import { CheckoutStepSkeleton, StepIndicatorSkeleton } from '@/components/checkout/CheckoutSkeletons';
@@ -49,11 +49,16 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 		country: '',
 	});
 
-	const { items, total, clear, isLoaded: cartLoaded, currencyBreakdown } = useCart();
+	const { items, total, clear, isEmpty, isLoaded: cartLoaded, currencyBreakdown } = useCart();
 	const { wallet, isConnected, connect, availableWallets } = useWallet();
 	const createOrdersMutation = useCreateOrders();
 	const updateOrderStatusMutation = useUpdateOrderStatus();
 	const validateCartStockMutation = useValidateBulkStock();
+	const hasClearedCartRef = useRef(false);
+
+	const updateOrderInState = (updatedOrder: Database.Order) => {
+		setCreatedOrders(prev => prev.map(order => (order.id === updatedOrder.id ? updatedOrder : order)));
+	};
 
 	const handleProceedToShipping = () => {
 		setStep('shipping');
@@ -227,15 +232,13 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 			if (result.allCompleted) {
 				// Update all orders to paid
 				for (const completed of result.completedOrders) {
-					await updateOrderStatusMutation.mutateAsync({
+					const updatedOrder = await updateOrderStatusMutation.mutateAsync({
 						orderId: completed.orderId,
 						status: 'paid',
 						txHash: completed.txHash,
 					});
+					updateOrderInState(updatedOrder);
 				}
-
-				// Clear cart
-				clear();
 
 				// Set success state
 				setStep('confirmation');
@@ -246,20 +249,22 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 				// Handle partial success
 				// Update completed orders
 				for (const completed of result.completedOrders) {
-					await updateOrderStatusMutation.mutateAsync({
+					const updatedOrder = await updateOrderStatusMutation.mutateAsync({
 						orderId: completed.orderId,
 						status: 'paid',
 						txHash: completed.txHash,
 					});
+					updateOrderInState(updatedOrder);
 				}
 
 				// Update failed orders
 				for (const failed of result.failedOrders) {
-					await updateOrderStatusMutation.mutateAsync({
+					const updatedOrder = await updateOrderStatusMutation.mutateAsync({
 						orderId: failed.orderId,
 						status: 'payment_failed',
 						error: failed.error,
 					});
+					updateOrderInState(updatedOrder);
 				}
 
 				setPaymentError(
@@ -271,6 +276,12 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 			setPaymentError('Payment processing failed. Please try again.');
 		}
 	};
+
+	useEffect(() => {
+		if (step !== 'confirmation' || hasClearedCartRef.current) return;
+		clear();
+		hasClearedCartRef.current = true;
+	}, [clear, step]);
 
 	const handleRetry = () => {
 		setPaymentError(null);
@@ -286,6 +297,25 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 			<div className="max-w-4xl mx-auto p-6">
 				<StepIndicatorSkeleton />
 				<CheckoutStepSkeleton icon={<div className="w-6 h-6 bg-gray-200 rounded-full animate-pulse" />} itemCount={2} />
+			</div>
+		);
+	}
+
+	if (isEmpty && step !== 'confirmation') {
+		return (
+			<div className="max-w-2xl mx-auto text-center p-6">
+				<h1 className="text-3xl font-bold mb-6">Checkout</h1>
+				<div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+					<p className="text-yellow-800 mb-4">
+						Your cart is empty. Please add items to your cart before proceeding to checkout.
+					</p>
+					<a
+						href="/products"
+						className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+					>
+						Continue Shopping
+					</a>
+				</div>
 			</div>
 		);
 	}
@@ -329,7 +359,7 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 					/>
 				)}
 				{step === 'confirmation' && (
-					<ConfirmationStep total={total} createdOrder={createdOrders[0]} error={paymentError} onRetry={handleRetry} />
+					<ConfirmationStep createdOrders={createdOrders} error={paymentError} onRetry={handleRetry} />
 				)}
 			</div>
 		</div>

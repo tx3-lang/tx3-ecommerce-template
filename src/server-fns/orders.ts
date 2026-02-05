@@ -1,8 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { createServerFn } from '@tanstack/react-start';
 import { z } from 'zod';
+
+// Lib
 import { getTokenMetadataById, isTokenSupported } from '@/lib';
-import { createOrderWithStockReservation, updateOrderStatus } from '@/lib/order-api';
+import type { BulkReservationResult } from '@/lib/stock-reservation';
 
 // Validation schemas using Zod (consistent with project patterns)
 const orderItemSchema = z.object({
@@ -123,6 +125,37 @@ async function validateAndCalculateOrderTotals(items: Database.OrderItemInput[])
 		validatedItems,
 		calculatedTotal: orderTotal,
 	};
+}
+
+async function updateOrderStatusWithServiceRole(
+	orderId: string,
+	status: Database.OrderStatus,
+	txHash?: string,
+	error?: string,
+) {
+	const supabase = getServerSupabase();
+	const updateData: Partial<Database.Order> = { status };
+
+	if (txHash) {
+		updateData.cardano_tx_hash = txHash;
+	}
+
+	if (error) {
+		updateData.payment_error = error;
+	}
+
+	const { error: updateError } = await supabase.from('orders').update(updateData).eq('id', orderId);
+
+	if (updateError) {
+		throw new Error(`Failed to update order: ${updateError.message}`);
+	}
+
+	// Stock reservations are handled automatically by database triggers
+	if (status === 'paid') {
+		console.log('Order paid, stock reservation confirmed automatically');
+	} else if (status === 'payment_failed' || status === 'cancelled') {
+		console.log('Order failed/cancelled, stock reservation released automatically');
+	}
 }
 
 /**
@@ -262,79 +295,6 @@ export const createMultiCurrencyOrdersServerFn = createServerFn({ method: 'POST'
 	});
 
 /**
- * Server function to create order with stock reservation
- * Uses automatic validation and error handling
- */
-export const createOrderServerFn = createServerFn({ method: 'POST' })
-	.inputValidator(createOrderSchema)
-	.handler(async ({ data }) => {
-		console.log('Creating order with server function:', {
-			walletAddress: data.wallet_address,
-			itemCount: data.items.length,
-			totalAmount: data.total_amount,
-		});
-
-		try {
-			// Step 1: Validate all tokens exist in supported_tokens
-			const tokenIdsToValidate = [data.token_id, ...data.items.map(item => item.token_id).filter(Boolean)];
-
-			const uniqueTokenIds = [...new Set(tokenIdsToValidate)];
-
-			for (const tokenId of uniqueTokenIds) {
-				if (tokenId) {
-					// Skip null values (ADA)
-					const isSupportedToken = await isTokenSupported(tokenId);
-					if (!isSupportedToken) {
-						throw new Error(`Token ${tokenId} is not supported for payments`);
-					}
-
-					const tokenMetadata = await getTokenMetadataById(tokenId);
-					if (!tokenMetadata) {
-						throw new Error(`Token metadata not found for ${tokenId}`);
-					}
-
-					if (!tokenMetadata.is_active) {
-						throw new Error(`Token ${tokenId} is not active`);
-					}
-				}
-			}
-
-			// Step 2: Create order with stock reservation
-			const result = await createOrderWithStockReservation(data as Database.CreateOrderData);
-
-			if (!result.success) {
-				// Let TanStack handle the error based on type
-				if (result.error?.includes('Token')) {
-					throw new Error(`TOKEN_ERROR: ${result.error}`);
-				}
-				if (result.error?.includes('Insufficient stock')) {
-					throw new Error(`STOCK_ERROR: ${result.error}`);
-				}
-				throw new Error(result.error || 'Order creation failed');
-			}
-
-			return {
-				success: true,
-				order: result.order,
-				message: 'Order created successfully with stock reservation',
-			};
-		} catch (error) {
-			console.error('Order creation server function error:', error);
-
-			// Re-throw to let TanStack handle it
-			if (error instanceof Error) {
-				// Check for validation errors
-				if (error.message.includes('Invalid')) {
-					throw new Error(`VALIDATION_ERROR: ${error.message}`);
-				}
-				throw error;
-			}
-
-			throw new Error('Unknown error occurred during order creation');
-		}
-	});
-
-/**
  * Server function to update order status
  * Handles payment confirmation and stock operations
  */
@@ -348,28 +308,38 @@ export const updateOrderStatusServerFn = createServerFn({ method: 'POST' })
 		});
 
 		try {
-			const result = await updateOrderStatus(
+			await updateOrderStatusWithServiceRole(
 				data.order_id,
 				data.status as Database.OrderStatus,
 				data.tx_hash,
 				data.error,
 			);
 
-			if (!result.success) {
-				throw new Error(result.error || 'Failed to update order status');
-			}
-
-			console.log(data);
-
-			// Fetch updated order data to return
-			const { supabase } = await import('@/lib/supabase');
+			// Fetch updated order data to return using service role
+			const supabase = getServerSupabase();
 			const { data: orderData, error: fetchError } = await supabase
 				.from('orders')
 				.select(`
 					*,
+					order_items (
+						product_id,
+						quantity,
+						price,
+						token_id,
+						products:product_id (
+							name,
+							description,
+							product_images (
+								image_url,
+								alt_text,
+								display_order
+							)
+						)
+					),
 					supported_tokens (policy_id, asset_name, display_name, decimals)
 				`)
-				.eq('id', data.order_id);
+				.eq('id', data.order_id)
+				.single();
 
 			if (fetchError) {
 				throw new Error(`Failed to fetch updated order: ${fetchError.message}`);
@@ -612,6 +582,10 @@ export const createOrdersServerFn = createServerFn({ method: 'POST' })
 	.handler(async ({ data }) => {
 		const supabase = getServerSupabase();
 		const createdOrders: Database.Order[] = [];
+		const rollbackOrder = async (orderId: string) => {
+			await supabase.from('order_items').delete().eq('order_id', orderId);
+			await supabase.from('orders').delete().eq('id', orderId);
+		};
 
 		console.log('Creating unified orders:', {
 			walletAddress: data.wallet_address,
@@ -733,12 +707,41 @@ export const createOrdersServerFn = createServerFn({ method: 'POST' })
 
 				if (itemsError) {
 					// Rollback: delete the created order
-					await supabase.from('orders').delete().eq('id', newOrder.id);
+					await rollbackOrder(newOrder.id);
 
 					return {
 						success: false,
 						orders: createdOrders,
 						message: `Failed to create order items: ${itemsError.message}`,
+					};
+				}
+
+				const reservationItems = validatedItems.map(item => ({
+					product_id: item.product_id,
+					quantity: item.quantity,
+				}));
+
+				const { data: reservationData, error: reservationError } = await supabase.rpc('reserve_bulk_stock', {
+					p_order_id: newOrder.id,
+					p_items: reservationItems,
+				});
+
+				if (reservationError) {
+					await rollbackOrder(newOrder.id);
+					return {
+						success: false,
+						orders: createdOrders,
+						message: `Failed to reserve stock: ${reservationError.message}`,
+					};
+				}
+
+				const reservationResult = reservationData as BulkReservationResult | null;
+				if (!reservationResult?.success) {
+					await rollbackOrder(newOrder.id);
+					return {
+						success: false,
+						orders: createdOrders,
+						message: reservationResult?.error || 'Stock reservation failed',
 					};
 				}
 

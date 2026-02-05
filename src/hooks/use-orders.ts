@@ -44,11 +44,11 @@ export function useOrders(walletAddress?: string) {
 }
 
 // Get single order
-export function useOrder(orderId?: string) {
+export function useOrder(orderId?: string, walletAddress?: string) {
 	return useQuery<Database.Order>({
-		queryKey: ['order', orderId],
+		queryKey: ['order', orderId, walletAddress],
 		queryFn: async () => {
-			if (!orderId) return null;
+			if (!orderId || !walletAddress) return null;
 
 			const { data, error } = await supabase
 				.from('orders')
@@ -72,12 +72,14 @@ export function useOrder(orderId?: string) {
 					supported_tokens (policy_id, asset_name, display_name, decimals)
 				`)
 				.eq('id', orderId)
+				.eq('wallet_address', walletAddress)
+				.is('deleted_at', null)
 				.single();
 
 			if (error) throw error;
 			return data;
 		},
-		enabled: !!orderId,
+		enabled: !!orderId && !!walletAddress,
 		staleTime: 5 * 60 * 1000, // 5 minutes
 	});
 }

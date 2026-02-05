@@ -1,11 +1,13 @@
-import { IconCheck, IconClock, IconPackage } from '@tabler/icons-react';
+import { IconCheck, IconClock, IconPackage, IconWallet } from '@tabler/icons-react';
 import { createFileRoute } from '@tanstack/react-router';
 
 // Components
+import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
 // Hooks
 import { useOrder } from '@/hooks/use-orders';
+import { useWallet } from '@/hooks/use-wallet';
 
 // Lib
 import { formatPriceSyncById } from '@/lib/unified-formatter';
@@ -16,7 +18,69 @@ export const Route = createFileRoute('/order-confirmation/$orderId')({
 
 function OrderConfirmation() {
 	const { orderId } = Route.useParams();
-	const { data: order, isLoading, error } = useOrder(orderId);
+	const { isConnected, connect, availableWallets, connecting, walletAddress } = useWallet();
+	const { data: order, isLoading, error } = useOrder(orderId, walletAddress ?? undefined);
+	const isWalletReady = isConnected && !!walletAddress;
+
+	if (!isWalletReady) {
+		return (
+			<div className="min-h-screen bg-gray-50 py-8">
+				<div className="container mx-auto px-4 max-w-3xl">
+					<div className="bg-white rounded-lg shadow-sm p-6">
+						<div className="flex items-start gap-4">
+							<div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+								<IconWallet className="w-6 h-6 text-blue-600" />
+							</div>
+							<div className="flex-1">
+								<h1 className="text-xl font-bold text-gray-900">Connect your wallet</h1>
+								<p className="text-gray-600 mt-1">
+									Connect your Cardano wallet to view this order.
+								</p>
+								{orderId ? (
+									<p className="text-sm text-gray-500 mt-2">
+										Order ID: <span className="font-mono">{orderId}</span>
+									</p>
+								) : null}
+							</div>
+						</div>
+
+						<div className="mt-6 space-y-3">
+							{availableWallets.length === 0 ? (
+								<p className="text-sm text-gray-500">
+									No Cardano wallets detected. Please install a wallet extension to continue.
+								</p>
+							) : (
+								availableWallets.map(walletKey => {
+									const walletInfo = typeof window !== 'undefined' ? window.cardano?.[walletKey] : null;
+									if (!walletInfo) return null;
+
+									return (
+										<Button
+											key={walletKey}
+											onClick={() => connect(walletKey)}
+											disabled={connecting}
+											variant="outline"
+											className="w-full justify-between"
+										>
+											<span className="flex items-center gap-2">
+												{connecting ? <Spinner /> : null}
+												Connect {walletInfo.name || walletKey}
+											</span>
+											<img
+												src={walletInfo.icon}
+												className="h-5"
+												alt={`Icon wallet ${walletInfo.name || walletKey}`}
+											/>
+										</Button>
+									);
+								})
+							)}
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	}
 
 	if (isLoading) {
 		return (
@@ -108,8 +172,8 @@ function OrderConfirmation() {
 
 										<div className="text-right">
 											<p className="font-semibold">
-												{formatPriceSyncById(item.price, item.token_id, {
-													supportedToken: item.supported_tokens,
+												{formatPriceSyncById(item.price, order.token_id, {
+													supportedToken: order.supported_tokens,
 												})}
 											</p>
 											<p className="text-sm text-gray-600">each</p>
@@ -169,7 +233,7 @@ function OrderConfirmation() {
 								{order.cardano_tx_hash && (
 									<div className="mt-3">
 										<p className="text-sm text-gray-600 mb-1">Transaction Hash:</p>
-										<p className="font-mono text-xs bg-white p-2 rounded border">{order.cardano_tx_hash}</p>
+										<p className="font-mono text-xs bg-white p-2 rounded border truncate">{order.cardano_tx_hash}</p>
 									</div>
 								)}
 
