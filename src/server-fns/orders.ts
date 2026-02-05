@@ -26,13 +26,6 @@ const validateAndReserveStockSchema = z.object({
 	reservation_minutes: z.number().int().min(5).max(120).optional().default(30),
 });
 
-const createOrderSchema = z.object({
-	wallet_address: z.string().min(1, 'Wallet address is required'),
-	items: z.array(orderItemSchema).min(1, 'At least one item is required'),
-	total_amount: z.number().positive('Total amount must be positive'),
-	token_id: z.uuid().nullable().optional(),
-});
-
 const updateOrderStatusSchema = z.object({
 	order_id: z.uuid('Invalid order ID format'),
 	status: z.enum(['pending', 'payment_failed', 'paid', 'processing', 'shipped', 'completed', 'cancelled']),

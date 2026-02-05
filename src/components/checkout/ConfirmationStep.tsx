@@ -52,9 +52,7 @@ function ConfirmationStepComponent({ createdOrders, error, onRetry }: Confirmati
 										</div>
 										<Button
 											variant="outline"
-											onClick={() =>
-												navigate({ to: '/order-confirmation/$orderId', params: { orderId: order.id } })
-											}
+											onClick={() => navigate({ to: '/order-confirmation/$orderId', params: { orderId: order.id } })}
 										>
 											View Details
 										</Button>

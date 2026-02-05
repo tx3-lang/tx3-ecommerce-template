@@ -33,9 +33,7 @@ function OrderConfirmation() {
 							</div>
 							<div className="flex-1">
 								<h1 className="text-xl font-bold text-gray-900">Connect your wallet</h1>
-								<p className="text-gray-600 mt-1">
-									Connect your Cardano wallet to view this order.
-								</p>
+								<p className="text-gray-600 mt-1">Connect your Cardano wallet to view this order.</p>
 								{orderId ? (
 									<p className="text-sm text-gray-500 mt-2">
 										Order ID: <span className="font-mono">{orderId}</span>
@@ -66,11 +64,7 @@ function OrderConfirmation() {
 												{connecting ? <Spinner /> : null}
 												Connect {walletInfo.name || walletKey}
 											</span>
-											<img
-												src={walletInfo.icon}
-												className="h-5"
-												alt={`Icon wallet ${walletInfo.name || walletKey}`}
-											/>
+											<img src={walletInfo.icon} className="h-5" alt={`Icon wallet ${walletInfo.name || walletKey}`} />
 										</Button>
 									);
 								})
