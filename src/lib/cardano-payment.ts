@@ -3,6 +3,7 @@ import { Buffer } from 'buffer';
 // Lib
 import { decodeHexAddress } from '@/lib/cardano';
 import { protocol } from '@/lib/tx3/protocol';
+import { submitPaymentServerFn } from '@/server-fns/payments';
 
 export interface PaymentResult {
 	success: boolean;
@@ -47,23 +48,13 @@ export interface MultiCurrencyPaymentResult {
 const MERCHANT_ADDRESS = import.meta.env.VITE_MERCHANT_ADDRESS || '';
 
 // Timeout configuration
-const CARDANO_PAYMENT_TIMEOUT = 60000; // 60 seconds = 3 Cardano blocks
+// const CARDANO_PAYMENT_TIMEOUT = 60000; // 60 seconds = 3 Cardano blocks
 
 export async function processCardanoPayment(wallet: CardanoWalletAPI, order: OrderPaymentInfo): Promise<PaymentResult> {
 	try {
-		const timeoutPromise = new Promise<never>((_, reject) =>
-			setTimeout(() => reject(new Error('Payment timeout')), CARDANO_PAYMENT_TIMEOUT),
-		);
 
 		// Determine payment type
 		const isAdaPayment = !order.policyId && !order.assetName;
-		const currency = isAdaPayment ? 'lovelace' : 'token units';
-		const tokenInfo = isAdaPayment ? '' : ` (${order.policyId}.${order.assetName})`;
-
-		// For now, simulate payment processing
-		console.log(
-			`Processing ${isAdaPayment ? 'ADA' : 'token'} payment for order ${order.id}: ${order.amount} ${currency}${tokenInfo}`,
-		);
 
 		const address = decodeHexAddress(await wallet.getChangeAddress());
 		const commonProps = {
@@ -82,38 +73,27 @@ export async function processCardanoPayment(wallet: CardanoWalletAPI, order: Ord
 					tokenPolicy: Buffer.from(order.policyId!, 'hex'),
 				});
 
-		const userSignature = await wallet.signTx(transactionInfo.tx, true);
+		const userWitnessSet = await wallet.signTx(transactionInfo.tx, true);
 
-		console.log(userSignature);
-
-		// await protocol.submit({
-		// 	tx: {
-		// 		content: transactionInfo.tx,
-		// 		encoding: 'hex',
-		// 	},
-		// 	witnesses: [
-		// 		// signature
-		// 		// Merchant Signature
-		// 		{
-		// 			signature: {
-		// 				content: '',
-		// 				encoding: 'hex',
-		// 			},
-		// 			key: {
-		// 				content: '',
-		// 				encoding: 'hex',
-		// 			},
-		// 			type: 'vkey',
-		// 		},
-		// 	],
-		// });
-
-		const paymentPromise = new Promise<string>(resolve => {
-			setTimeout(() => resolve(transactionInfo.hash), 2000);
+		const submitResult = await submitPaymentServerFn({
+			data: {
+				tx_cbor_hex: transactionInfo.tx,
+				witness_set_cbor_hex: userWitnessSet,
+				tx_hash_hex: transactionInfo.hash,
+			},
 		});
 
-		const txHash = await Promise.race([paymentPromise, timeoutPromise]);
-		return { success: true, txHash };
+		// TODO: Check transaction status on chain.
+
+		if (!submitResult.success) {
+			return {
+				success: false,
+				error: submitResult.error || 'Payment failed',
+				isTimeout: submitResult.error === 'Payment timeout',
+			};
+		}
+
+		return { success: true, txHash: submitResult.txHash || transactionInfo.hash };
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Payment failed';
 		return {
