@@ -6,6 +6,7 @@ import { useEffect, useId, useState } from 'react';
 import { QuantitySelector } from '@/components/ui/quantity-selector';
 
 // Hooks
+import { brandConfig } from '@/config/brand';
 import { useCart } from '@/hooks/use-cart';
 import { useProduct } from '@/hooks/use-products';
 
@@ -89,6 +90,7 @@ function ProductDetail() {
 	const { data: product, isLoading, error } = useProduct(productId);
 	const { addItem, getItemQuantity, updateProductStock } = useCart();
 	const [quantity, setQuantity] = useState(1);
+	const enableShipping = brandConfig.features.enableShipping;
 
 	const currentProductQuantity = getItemQuantity(productId);
 	const maxQuantity = product ? product.stock - currentProductQuantity : 1;
@@ -259,12 +261,20 @@ function ProductDetail() {
 					</div>
 
 					{/* Benefits */}
-					<div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-6 border-t border-gray-200">
-						<div className="text-center p-4">
-							<IconTruck size={32} className="mx-auto mb-2 text-primary" />
-							<p className="text-sm font-medium text-gray-900">Free Shipping</p>
-							<p className="text-xs text-gray-600">Orders over 100 {ADA_SYMBOL}</p>
-						</div>
+					<div
+						className={
+							enableShipping
+								? 'grid grid-cols-1 sm:grid-cols-3 gap-4 pt-6 border-t border-gray-200'
+								: 'grid grid-cols-1 sm:grid-cols-2 gap-4 pt-6 border-t border-gray-200'
+						}
+					>
+						{enableShipping && (
+							<div className="text-center p-4">
+								<IconTruck size={32} className="mx-auto mb-2 text-primary" />
+								<p className="text-sm font-medium text-gray-900">Free Shipping</p>
+								<p className="text-xs text-gray-600">Orders over 100 {ADA_SYMBOL}</p>
+							</div>
+						)}
 						<div className="text-center p-4">
 							<IconShield size={32} className="mx-auto mb-2 text-primary" />
 							<p className="text-sm font-medium text-gray-900">1 Year Warranty</p>

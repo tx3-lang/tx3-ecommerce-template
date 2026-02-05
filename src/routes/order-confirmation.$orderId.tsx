@@ -5,6 +5,9 @@ import { createFileRoute } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
+// Config
+import { brandConfig } from '@/config/brand';
+
 // Hooks
 import { useOrder } from '@/hooks/use-orders';
 import { useWallet } from '@/hooks/use-wallet';
@@ -21,6 +24,7 @@ function OrderConfirmation() {
 	const { isConnected, connect, availableWallets, connecting, walletAddress } = useWallet();
 	const { data: order, isLoading, error } = useOrder(orderId, walletAddress ?? undefined);
 	const isWalletReady = isConnected && !!walletAddress;
+	const enableShipping = brandConfig.features.enableShipping;
 
 	if (!isWalletReady) {
 		return (
@@ -193,10 +197,12 @@ function OrderConfirmation() {
 									</span>
 								</div>
 
-								<div className="flex justify-between text-sm">
-									<span className="text-gray-600">Shipping</span>
-									<span className="font-medium">Free</span>
-								</div>
+								{enableShipping && (
+									<div className="flex justify-between text-sm">
+										<span className="text-gray-600">Shipping</span>
+										<span className="font-medium">Free</span>
+									</div>
+								)}
 
 								<div className="border-t pt-3">
 									<div className="flex justify-between">

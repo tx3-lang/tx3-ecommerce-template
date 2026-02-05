@@ -1,4 +1,5 @@
 import { IconAlertCircle } from '@tabler/icons-react';
+import { brandConfig } from '@/config/brand';
 import type { CartTotals } from '@/lib/cart-calculations';
 import { formatPriceSync } from '@/lib/unified-formatter';
 
@@ -18,6 +19,7 @@ export function OrderSummary({
 	showMultiPaymentWarning = false,
 }: OrderSummaryProps) {
 	const hasMultipleCurrencies = currencyBreakdown && Object.keys(currencyBreakdown).length > 1;
+	const enableShipping = brandConfig.features.enableShipping;
 
 	return (
 		<div className="bg-white border rounded-lg p-6">
@@ -69,7 +71,7 @@ export function OrderSummary({
 					</div>
 				)}
 
-				{showShippingAndTax && (
+				{showShippingAndTax && enableShipping && (
 					<>
 						<div className="flex justify-between text-sm">
 							<span>Shipping</span>

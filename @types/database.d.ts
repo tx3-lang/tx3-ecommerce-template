@@ -37,11 +37,27 @@ declare namespace Database {
 		retry_count: number;
 		can_cancel: boolean;
 		token_id: string | null;
+		shipping_id: string | null;
 		order_items: OrderItem[] | null;
 		created_at: string;
 		updated_at: string;
 		deleted_at: string | null;
 		supported_tokens: SupportedToken | null;
+		shipping_info?: ShippingInfo | null;
+	}
+
+	interface ShippingInfo {
+		id: string;
+		wallet_address: string;
+		full_name: string;
+		email: string;
+		phone: string | null;
+		address: string;
+		city: string;
+		postal_code: string;
+		country: string;
+		created_at: string;
+		updated_at: string;
 	}
 
 	interface OrderItem {
@@ -84,6 +100,15 @@ declare namespace Database {
 			token_id?: string | null;
 		}[];
 		currencies?: Record<string, { policy_id: string | null; asset_name: string | null; decimals: number | null }>;
+		shipping_info?: {
+			fullName: string;
+			email: string;
+			phone?: string;
+			address: string;
+			city: string;
+			postalCode: string;
+			country: string;
+		};
 	}
 
 	// Supported tokens table interface

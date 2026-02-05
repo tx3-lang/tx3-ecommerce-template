@@ -1,14 +1,18 @@
 import { IconAlertCircle, IconMapPin } from '@tabler/icons-react';
 import { useNavigate } from '@tanstack/react-router';
 import { memo } from 'react';
-
 // Components
 import { CartItem } from '@/components/cart/CartItem';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+// Config
+import { brandConfig } from '@/config/brand';
+
 // Hooks
 import { useCart } from '@/hooks/use-cart';
 import { useCartItems } from '@/hooks/use-cart-items';
+
+// Local
 import { OrderSummary } from './OrderSummary';
 
 interface ReviewStepProps {
@@ -82,7 +86,11 @@ function ReviewStepComponent({ total, isLoading, onProceed }: ReviewStepProps) {
 				</Button>
 				<Button onClick={onProceed} disabled={isLoading || items.length === 0 || isCheckoutBlocked}>
 					{isLoading ? <Spinner /> : null}
-					{isCheckoutBlocked ? 'Cannot Proceed' : 'Proceed to Shipping'}
+					{isCheckoutBlocked
+						? 'Cannot Proceed'
+						: brandConfig.features.enableShipping
+							? 'Proceed to Shipping'
+							: 'Proceed to Payment'}
 				</Button>
 			</div>
 		</div>

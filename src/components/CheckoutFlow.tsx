@@ -5,29 +5,19 @@ import { CheckoutStepSkeleton, StepIndicatorSkeleton } from '@/components/checko
 import { ConfirmationStep } from '@/components/checkout/ConfirmationStep';
 import { PaymentStep } from '@/components/checkout/PaymentStep';
 import { ReviewStep } from '@/components/checkout/ReviewStep';
-import { ShippingStep } from '@/components/checkout/ShippingStep';
+import { type ShippingInfo, ShippingStep } from '@/components/checkout/ShippingStep';
 import { StepIndicator } from '@/components/StepIndicator';
-
+// Lib
+import { brandConfig } from '@/config/brand';
 // Hooks
 import { useCart } from '@/hooks/use-cart';
 import { useCreateOrders, useUpdateOrderStatus, useValidateBulkStock } from '@/hooks/use-orders-server-fns';
 import { useWallet } from '@/hooks/use-wallet';
 import { type OrderPaymentInfo, processMultiCurrencyPayments } from '@/lib/cardano-payment';
-// Lib
 import { getOrdersDataFromCart } from '@/lib/cart-calculations';
 import type { CurrencyPaymentStatus } from './checkout/PaymentStep';
 
 type CheckoutStep = 'review' | 'shipping' | 'payment' | 'confirmation';
-
-interface ShippingInfo {
-	fullName: string;
-	email: string;
-	phone?: string;
-	address: string;
-	city: string;
-	postalCode: string;
-	country: string;
-}
 
 interface CheckoutFlowProps {
 	onComplete?: (orderId: string) => void;
@@ -48,6 +38,7 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 		postalCode: '',
 		country: '',
 	});
+	const enableShipping = brandConfig.features.enableShipping;
 
 	const { items, total, clear, isEmpty, isLoaded: cartLoaded, currencyBreakdown } = useCart();
 	const { wallet, isConnected, connect, availableWallets } = useWallet();
@@ -61,10 +52,16 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 	};
 
 	const handleProceedToShipping = () => {
-		setStep('shipping');
+		setStep(enableShipping ? 'shipping' : 'payment');
 	};
 
 	const handleProceedToPayment = async () => {
+		if (!enableShipping) {
+			setPaymentError(null);
+			setStep('payment');
+			return;
+		}
+
 		// Validate shipping info
 		if (!shippingInfo.fullName || !shippingInfo.email || !shippingInfo.address || !shippingInfo.city) {
 			setPaymentError('Please fill in all required shipping information');
@@ -127,6 +124,17 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 			const orders = await createOrdersMutation.mutateAsync({
 				wallet_address: walletAddress,
 				orders: ordersData,
+				shipping_info: enableShipping
+					? {
+							fullName: shippingInfo.fullName,
+							email: shippingInfo.email,
+							phone: shippingInfo.phone || undefined,
+							address: shippingInfo.address,
+							city: shippingInfo.city,
+							postalCode: shippingInfo.postalCode,
+							country: shippingInfo.country,
+						}
+					: undefined,
 			});
 
 			if (orders && orders.length > 0) {
@@ -324,17 +332,25 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 		<div className="max-w-4xl mx-auto p-6">
 			<StepIndicator
 				current={step}
-				steps={[
-					{ id: 'review', label: 'Review' },
-					{ id: 'shipping', label: 'Shipping' },
-					{ id: 'payment', label: 'Payment' },
-					{ id: 'confirmation', label: 'Confirmation' },
-				]}
+				steps={
+					enableShipping
+						? [
+								{ id: 'review', label: 'Review' },
+								{ id: 'shipping', label: 'Shipping' },
+								{ id: 'payment', label: 'Payment' },
+								{ id: 'confirmation', label: 'Confirmation' },
+							]
+						: [
+								{ id: 'review', label: 'Review' },
+								{ id: 'payment', label: 'Payment' },
+								{ id: 'confirmation', label: 'Confirmation' },
+							]
+				}
 			/>
 
 			<div className="mt-8">
 				{step === 'review' && <ReviewStep total={total} isLoading={isLoading} onProceed={handleProceedToShipping} />}
-				{step === 'shipping' && (
+				{enableShipping && step === 'shipping' && (
 					<ShippingStep
 						shippingInfo={shippingInfo}
 						onShippingInfoChange={setShippingInfo}
@@ -353,7 +369,7 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 						isLoading={isLoading}
 						onWalletConnect={handleWalletConnect}
 						onPayment={handlePayment}
-						onBack={() => setStep('shipping')}
+						onBack={() => setStep(enableShipping ? 'shipping' : 'review')}
 						error={paymentError}
 						paymentStatuses={paymentStatuses}
 					/>

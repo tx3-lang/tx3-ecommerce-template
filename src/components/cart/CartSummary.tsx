@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 // Components
 import { Button } from '@/components/ui/button';
 // Lib
+import { brandConfig } from '@/config/brand';
 import type { CartTotals } from '@/lib/cart-calculations';
 import { formatPriceSync } from '@/lib/unified-formatter';
 import { cn } from '@/lib/utils';
@@ -33,6 +34,7 @@ export function CartSummary({
 	disabled = false,
 }: CartSummaryProps) {
 	// Helper to render currency breakdown
+	const enableShipping = brandConfig.features.enableShipping;
 	const renderCurrencyBreakdown = (isCompact: boolean = false) => (
 		<div className={cn('space-y-2', isCompact && 'space-y-2')}>
 			{Object.entries(currencyBreakdown).map(([currencyKey, data]) => {
@@ -56,10 +58,12 @@ export function CartSummary({
 			<div className={cn('border-t border-gray-700 p-4 bg-gray-800', className)}>
 				{renderCurrencyBreakdown(true)}
 
-				<div className="flex justify-between text-sm mt-2 pt-2 border-t border-gray-700">
-					<span className="text-gray-300">Shipping:</span>
-					<span className="text-green-400">Free</span>
-				</div>
+				{enableShipping && (
+					<div className="flex justify-between text-sm mt-2 pt-2 border-t border-gray-700">
+						<span className="text-gray-300">Shipping:</span>
+						<span className="text-green-400">Free</span>
+					</div>
+				)}
 
 				{/* <div className="flex justify-between font-semibold pt-2">
 					<span className="text-white">Total:</span>
@@ -100,10 +104,12 @@ export function CartSummary({
 					</div>
 				)}
 
-				<div className="flex justify-between text-sm">
-					<span className="text-gray-600">Shipping</span>
-					<span className="text-green-600 font-medium">Free</span>
-				</div>
+				{enableShipping && (
+					<div className="flex justify-between text-sm">
+						<span className="text-gray-600">Shipping</span>
+						<span className="text-green-600 font-medium">Free</span>
+					</div>
+				)}
 
 				{/* <div className="flex justify-between text-sm">
 					<span className="text-gray-600">Tax</span>

@@ -14,6 +14,16 @@ const orderItemSchema = z.object({
 	token_id: z.uuid().nullable().optional(),
 });
 
+const shippingInfoSchema = z.object({
+	fullName: z.string().min(1, 'Full name is required'),
+	email: z.email('Valid email is required'),
+	phone: z.string().optional(),
+	address: z.string().min(1, 'Address is required'),
+	city: z.string().min(1, 'City is required'),
+	postalCode: z.string().min(1, 'Postal code is required'),
+	country: z.string().min(1, 'Country is required'),
+});
+
 const validateAndReserveStockSchema = z.object({
 	cart_items: z
 		.array(
@@ -41,6 +51,7 @@ const createMultiCurrencyOrderSchema = z.object({
 			token_id: z.uuid().nullable().optional(),
 		}),
 	),
+	shipping_info: shippingInfoSchema.optional(),
 });
 
 const createOrdersSchema = z.object({
@@ -53,6 +64,7 @@ const createOrdersSchema = z.object({
 			}),
 		)
 		.min(1, 'At least one order group is required'),
+	shipping_info: shippingInfoSchema.optional(),
 });
 
 /**
@@ -157,7 +169,8 @@ async function updateOrderStatusWithServiceRole(
  */
 export const createMultiCurrencyOrdersServerFn = createServerFn({ method: 'POST' })
 	.inputValidator(createMultiCurrencyOrderSchema)
-	.handler(async ({ data: { wallet_address, orders } }) => {
+	.handler(async ({ data }) => {
+		const { wallet_address, orders, shipping_info } = data;
 		console.log('Creating multi-currency orders:', {
 			walletAddress: wallet_address,
 			orderCount: orders.length,
@@ -165,6 +178,7 @@ export const createMultiCurrencyOrdersServerFn = createServerFn({ method: 'POST'
 
 		const supabase = getServerSupabase();
 		const createdOrders: Database.Order[] = [];
+		let shippingInfoId: string | null = null;
 
 		try {
 			// Validate input
@@ -180,6 +194,35 @@ export const createMultiCurrencyOrdersServerFn = createServerFn({ method: 'POST'
 					success: false,
 					error: 'At least one order group is required',
 				};
+			}
+
+			if (shipping_info) {
+				const { data: shippingInfo, error: shippingError } = await supabase
+					.from('shipping_info')
+					.upsert(
+						{
+							wallet_address: wallet_address,
+							full_name: shipping_info.fullName,
+							email: shipping_info.email,
+							phone: shipping_info.phone || null,
+							address: shipping_info.address,
+							city: shipping_info.city,
+							postal_code: shipping_info.postalCode,
+							country: shipping_info.country,
+						},
+						{ onConflict: 'wallet_address' },
+					)
+					.select('id')
+					.single();
+
+				if (shippingError || !shippingInfo) {
+					return {
+						success: false,
+						error: `Failed to save shipping info: ${shippingError?.message || 'Unknown error'}`,
+					};
+				}
+
+				shippingInfoId = shippingInfo.id;
 			}
 
 			// Validate all tokens first
@@ -232,6 +275,7 @@ export const createMultiCurrencyOrdersServerFn = createServerFn({ method: 'POST'
 						wallet_address: wallet_address,
 						total_amount: calculatedTotal,
 						token_id: orderGroup.token_id || null,
+						shipping_id: shippingInfoId,
 						status: 'pending',
 					})
 					.select(`
@@ -575,6 +619,7 @@ export const createOrdersServerFn = createServerFn({ method: 'POST' })
 	.handler(async ({ data }) => {
 		const supabase = getServerSupabase();
 		const createdOrders: Database.Order[] = [];
+		let shippingInfoId: string | null = null;
 		const rollbackOrder = async (orderId: string) => {
 			await supabase.from('order_items').delete().eq('order_id', orderId);
 			await supabase.from('orders').delete().eq('id', orderId);
@@ -604,6 +649,36 @@ export const createOrdersServerFn = createServerFn({ method: 'POST' })
 					orders: [],
 					message: 'At least one order group is required',
 				};
+			}
+
+			if (data.shipping_info) {
+				const { data: shippingInfo, error: shippingError } = await supabase
+					.from('shipping_info')
+					.upsert(
+						{
+							wallet_address: data.wallet_address,
+							full_name: data.shipping_info.fullName,
+							email: data.shipping_info.email,
+							phone: data.shipping_info.phone || null,
+							address: data.shipping_info.address,
+							city: data.shipping_info.city,
+							postal_code: data.shipping_info.postalCode,
+							country: data.shipping_info.country,
+						},
+						{ onConflict: 'wallet_address' },
+					)
+					.select('id')
+					.single();
+
+				if (shippingError || !shippingInfo) {
+					return {
+						success: false,
+						orders: [],
+						message: `Failed to save shipping info: ${shippingError?.message || 'Unknown error'}`,
+					};
+				}
+
+				shippingInfoId = shippingInfo.id;
 			}
 
 			// Validate all tokens are supported and active
@@ -661,6 +736,7 @@ export const createOrdersServerFn = createServerFn({ method: 'POST' })
 						wallet_address: data.wallet_address,
 						total_amount: calculatedTotal,
 						token_id: orderGroup.token_id || null,
+						shipping_id: shippingInfoId,
 						status: 'pending',
 					})
 					.select(

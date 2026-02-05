@@ -33,9 +33,6 @@ export const brandConfig: BrandConfig = {
 		address: '123 Main St, New York, NY 10001',
 	},
 	features: {
-		enableGuestCheckout: true,
-		enableUserRegistration: false,
-		enableStockManagement: true,
-		enableMultipleImages: true,
+		enableShipping: false,
 	},
 };

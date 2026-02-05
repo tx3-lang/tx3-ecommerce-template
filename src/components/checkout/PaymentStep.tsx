@@ -1,11 +1,15 @@
 import { IconAlertCircle, IconCheck, IconClock, IconCreditCard, IconLoader, IconX } from '@tabler/icons-react';
 import { memo } from 'react';
-
 // Components
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+// Config
+import { brandConfig } from '@/config/brand';
+
 // Hooks
 import { useCart } from '@/hooks/use-cart';
+
+// Lib
 import { formatPriceSync } from '@/lib/unified-formatter';
 
 export type TransactionStatus = 'pending' | 'processing' | 'completed' | 'failed';
@@ -233,7 +237,7 @@ function PaymentStepComponent({
 
 			<div className="flex justify-between">
 				<Button variant="outline" onClick={onBack} disabled={isLoading}>
-					Back to Shipping
+					{brandConfig.features.enableShipping ? 'Back to Shipping' : 'Back to Review'}
 				</Button>
 				{isConnected && !hasStartedPayments && (
 					<Button onClick={onPayment} disabled={isLoading}>

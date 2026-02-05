@@ -25,6 +25,15 @@ export function useCreateOrders() {
 				items: Database.OrderItemInput[];
 				token_id?: string | null;
 			}>;
+			shipping_info?: {
+				fullName: string;
+				email: string;
+				phone?: string;
+				address: string;
+				city: string;
+				postalCode: string;
+				country: string;
+			};
 		}) => {
 			const result = await createOrdersServerFn({ data });
 
