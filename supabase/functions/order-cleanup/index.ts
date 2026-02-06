@@ -11,12 +11,29 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 }
 
-// Environment variables
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+let supabaseClient: ReturnType<typeof createClient> | null = null
+let supabaseInitError: string | null = null
 
-// Create Supabase client with service role key
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+function getSupabaseClient(): { client?: ReturnType<typeof createClient>; error?: string } {
+  if (supabaseClient) {
+    return { client: supabaseClient }
+  }
+
+  if (supabaseInitError) {
+    return { error: supabaseInitError }
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    supabaseInitError = 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY'
+    return { error: supabaseInitError }
+  }
+
+  supabaseClient = createClient(supabaseUrl, supabaseServiceKey)
+  return { client: supabaseClient }
+}
 
 interface CleanupResult {
   success: boolean
@@ -26,14 +43,29 @@ interface CleanupResult {
   timestamp: string
 }
 
+interface CleanupReservationsRpc {
+  success?: boolean
+  reservations_expired?: number
+  quantity_released?: number
+  timestamp?: string
+  error?: string
+}
+
+interface CancelOrdersRpc {
+  success?: boolean
+  orders_cancelled?: number
+  timestamp?: string
+  error?: string
+}
+
 // Main cleanup function
-async function performOrderCleanup(): Promise<CleanupResult> {
+async function performOrderCleanup(supabase: ReturnType<typeof createClient>): Promise<CleanupResult> {
   try {
     console.log('Starting order cleanup process...')
     
     // Step 1: Cleanup expired stock reservations
     const { data: cleanupResult, error: cleanupError } = await supabase
-      .rpc('cleanup_expired_reservations')
+      .rpc<CleanupReservationsRpc>('cleanup_expired_reservations')
     
     if (cleanupError) {
       console.error('Failed to cleanup expired reservations:', cleanupError)
@@ -44,11 +76,20 @@ async function performOrderCleanup(): Promise<CleanupResult> {
       }
     }
     
+    if (cleanupResult?.success === false) {
+      console.error('Failed to cleanup expired reservations:', cleanupResult)
+      return {
+        success: false,
+        message: cleanupResult.error || 'Failed to cleanup expired reservations',
+        timestamp: new Date().toISOString()
+      }
+    }
+
     console.log('Stock reservations cleanup result:', cleanupResult)
     
     // Step 2: Auto-cancel expired pending orders
     const { data: cancelResult, error: cancelError } = await supabase
-      .rpc('auto_cancel_expired_orders')
+      .rpc<CancelOrdersRpc>('auto_cancel_expired_orders')
     
     if (cancelError) {
       console.error('Failed to auto-cancel expired orders:', cancelError)
@@ -59,13 +100,22 @@ async function performOrderCleanup(): Promise<CleanupResult> {
       }
     }
     
+    if (cancelResult?.success === false) {
+      console.error('Failed to auto-cancel expired orders:', cancelResult)
+      return {
+        success: false,
+        message: cancelResult.error || 'Failed to auto-cancel expired orders',
+        timestamp: new Date().toISOString()
+      }
+    }
+
     console.log('Orders auto-cancel result:', cancelResult)
     
     return {
       success: true,
       message: 'Cleanup completed successfully',
-      expiredReservations: cleanupResult?.[0]?.quantity_released || 0,
-      cancelledOrders: cancelResult || 0,
+      expiredReservations: cleanupResult?.reservations_expired || 0,
+      cancelledOrders: cancelResult?.orders_cancelled || 0,
       timestamp: new Date().toISOString()
     }
     
@@ -79,6 +129,13 @@ async function performOrderCleanup(): Promise<CleanupResult> {
   }
 }
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+  })
+}
+
 // HTTP request handler
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -86,58 +143,52 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  if (req.method === 'GET') {
+    const { error } = getSupabaseClient()
+    if (error) {
+      return jsonResponse({ status: 'error', message: error }, 500)
+    }
+
+    return jsonResponse({ status: 'ok', timestamp: new Date().toISOString() })
+  }
+
   // Only allow POST requests for cleanup
   if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { 
-        status: 405, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    )
+    return jsonResponse({ error: 'Method not allowed' }, 405)
   }
 
   try {
     // Verify API key (simple authentication)
     const authHeader = req.headers.get('Authorization')
-    const expectedApiKey = Deno.env.get('CLEANUP_API_KEY') || 'cleanup-key-123'
+    const expectedApiKey = Deno.env.get('CLEANUP_API_KEY')
+
+    if (!expectedApiKey) {
+      return jsonResponse({ error: 'Missing CLEANUP_API_KEY configuration' }, 500)
+    }
     
     if (!authHeader || authHeader !== `Bearer ${expectedApiKey}`) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      )
+      return jsonResponse({ error: 'Unauthorized' }, 401)
+    }
+
+    const { client, error } = getSupabaseClient()
+    if (error || !client) {
+      return jsonResponse({ error: error || 'Supabase client not initialized' }, 500)
     }
 
     // Perform cleanup
-    const result = await performOrderCleanup()
+    const result = await performOrderCleanup(client)
     
     console.log('Cleanup completed:', result)
     
-    return new Response(
-      JSON.stringify(result),
-      { 
-        status: result.success ? 200 : 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    )
+    return jsonResponse(result, result.success ? 200 : 500)
     
   } catch (error) {
     console.error('Error in cleanup function:', error)
     
-    return new Response(
-      JSON.stringify({ 
-        success: false,
-        message: 'Internal server error',
-        timestamp: new Date().toISOString()
-      }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    )
+    return jsonResponse({ 
+      success: false,
+      message: 'Internal server error',
+      timestamp: new Date().toISOString()
+    }, 500)
   }
 })
