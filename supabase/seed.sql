@@ -11,9 +11,7 @@ INSERT INTO supported_tokens (
   display_name,
   decimals,
   is_active
-) VALUES 
-  ('1a2b3c4d5e6f7890123456789012345678901234567890123456789012345678', '446f6765436f696e', 'DogeCoin', 2, true),
-  ('abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890', '5574696c697479546f6b656e', 'UtilityToken', 6, true),
+) VALUES
   ('0030630e5173e8be7f0a004cda6f6958f19f88a5179cfe6af87efdf7', '425549444c45525f524557415244', null, 0, true); -- REAL PREVIEW TOKEN for testing
 
 -- Insert ADA products (token_id = NULL)
@@ -83,9 +81,7 @@ INSERT INTO products (
   is_featured,
   token_id
 ) VALUES 
-  ('Crypto Trading Bot License', 'Advanced automated trading bot with AI-powered strategies for cryptocurrency markets.', 250, 5, true, true, (SELECT id FROM supported_tokens WHERE display_name = 'DogeCoin' LIMIT 1)),
-  ('Digital Art NFT', 'Unique digital artwork from Space collection. One-of-a-kind piece.', 1, 1, true, true, (SELECT id FROM supported_tokens WHERE asset_name = '425549444c45525f524557415244' LIMIT 1)),
-  ('Premium Subscription', 'Monthly premium subscription with access to all features and priority support.', 5000000, 100, true, false, (SELECT id FROM supported_tokens WHERE display_name = 'UtilityToken' LIMIT 1));
+  ('Digital Art NFT', 'Unique digital artwork from Space collection. One-of-a-kind piece.', 1, 1, true, true, (SELECT id FROM supported_tokens WHERE asset_name = '425549444c45525f524557415244' LIMIT 1));
 
 
 -- Insert reliable placeholder images with consistent service
@@ -100,9 +96,7 @@ SELECT
     WHEN 'Ergonomic Office Chair' THEN 'https://images.unsplash.com/photo-1688578735352-9a6f2ac3b70a?w=800&h=800&fit=crop&crop=entropy'
     WHEN 'Yoga Mat Premium' THEN 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=800&h=800&fit=crop&crop=entropy'
     WHEN 'Wireless Charging Pad' THEN 'https://images.unsplash.com/photo-1617975316514-69cd7e16c2a4?w=800&h=800&fit=crop&crop=entropy'
-    WHEN 'Crypto Trading Bot License' THEN 'https://images.unsplash.com/photo-1622630998477-20aa696ecb05?w=800&h=800&fit=crop&crop=entropy'
     WHEN 'Digital Art NFT' THEN 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=800&h=800&fit=crop&crop=entropy'
-    WHEN 'Premium Subscription' THEN 'https://images.unsplash.com/photo-1553729459-efe14ef6055d?w=800&h=800&fit=crop&crop=entropy'
   END,
   CASE name
     WHEN 'Premium Wireless Headphones' THEN 'Premium wireless headphones with active noise cancellation and premium comfort for professional audio experience'
@@ -111,9 +105,7 @@ SELECT
     WHEN 'Ergonomic Office Chair' THEN 'Comfortable ergonomic office chair with adjustable lumbar support, armrests, and breathable mesh back'
     WHEN 'Yoga Mat Premium' THEN 'Non-slip premium yoga mat with extra cushioning, alignment guides, and carrying strap for portability'
     WHEN 'Wireless Charging Pad' THEN 'Fast wireless charging pad compatible with all Qi-enabled devices featuring LED indicator and sleek minimalist design'
-    WHEN 'Crypto Trading Bot License' THEN 'Advanced cryptocurrency trading bot interface with AI-powered algorithms and real-time market analysis charts'
     WHEN 'Digital Art NFT' THEN 'Unique digital artwork from space collection with vibrant cosmic colors and abstract patterns'
-    WHEN 'Premium Subscription' THEN 'Premium subscription service interface with enhanced features and priority customer support options'
   END,
   0
 FROM products

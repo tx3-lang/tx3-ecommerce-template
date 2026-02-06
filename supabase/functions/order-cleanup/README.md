@@ -17,9 +17,9 @@ This Supabase Edge Function provides automated cleanup for expired stock reserva
 **Response**: JSON with cleanup results
 
 ### GET /order-cleanup (optional health check)
-**Description**: Returns a basic health status
+**Description**: Returns reservation health metrics
 **Authentication**: None (for monitoring)
-**Response**: JSON with health status and timestamp
+**Response**: JSON with health status
 
 ## Usage
 
@@ -78,14 +78,6 @@ jobs:
   "message": "Cleanup completed successfully",
   "expiredReservations": 5,
   "cancelledOrders": 2,
-  "timestamp": "2023-12-01T12:00:00.000Z"
-}
-```
-
-### Health Response
-```json
-{
-  "status": "ok",
   "timestamp": "2023-12-01T12:00:00.000Z"
 }
 ```

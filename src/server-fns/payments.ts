@@ -1,8 +1,11 @@
-import { TransactionWitnessSet } from '@emurgo/cardano-serialization-lib-nodejs';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { createServerFn } from '@tanstack/react-start';
+import { Buffer } from 'buffer';
 import type { SubmitWitness } from 'tx3-sdk/trp';
 import { z } from 'zod';
+
+// Lib
+import { decodeWitnessSetVkeys } from '@/lib/cbor-witness';
 import { protocol } from '@/lib/tx3/protocol';
 
 const submitPaymentSchema = z.object({
@@ -13,6 +16,10 @@ const submitPaymentSchema = z.object({
 
 function hexToBytes(hex: string): Uint8Array {
 	return Buffer.from(hex, 'hex');
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+	return Buffer.from(bytes).toString('hex');
 }
 
 function signTxWithMerchant(txHash: string): SubmitWitness[] {
@@ -42,26 +49,19 @@ function signTxWithMerchant(txHash: string): SubmitWitness[] {
 	];
 }
 
-function witnessesFromWitnessSet(witnessSet: TransactionWitnessSet): SubmitWitness[] {
-	const vkeys = witnessSet.vkeys();
-	if (!vkeys) return [];
-
-	const out: SubmitWitness[] = [];
-	for (let i = 0; i < vkeys.len(); i += 1) {
-		const w = vkeys.get(i);
-		out.push({
-			type: 'vkey',
-			key: {
-				content: w.vkey().public_key().to_hex(),
-				encoding: 'hex',
-			},
-			signature: {
-				content: w.signature().to_hex(),
-				encoding: 'hex',
-			},
-		});
-	}
-	return out;
+function witnessesFromWitnessSetCbor(witnessSetCborHex: string): SubmitWitness[] {
+	const vkeyWitnesses = decodeWitnessSetVkeys(hexToBytes(witnessSetCborHex));
+	return vkeyWitnesses.map(witness => ({
+		type: 'vkey',
+		key: {
+			content: bytesToHex(witness.vkey),
+			encoding: 'hex',
+		},
+		signature: {
+			content: bytesToHex(witness.signature),
+			encoding: 'hex',
+		},
+	}));
 }
 
 export const submitPaymentServerFn = createServerFn({ method: 'POST' })
@@ -71,8 +71,7 @@ export const submitPaymentServerFn = createServerFn({ method: 'POST' })
 			const { witness_set_cbor_hex, tx_cbor_hex, tx_hash_hex } = data;
 
 			const merchantWitnesses = signTxWithMerchant(tx_hash_hex);
-			const walletWitnessSet = TransactionWitnessSet.from_bytes(hexToBytes(witness_set_cbor_hex));
-			const walletWitnesses = witnessesFromWitnessSet(walletWitnessSet);
+			const walletWitnesses = witnessesFromWitnessSetCbor(witness_set_cbor_hex);
 
 			await protocol.submit({
 				tx: {
