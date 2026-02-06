@@ -172,13 +172,16 @@ DECLARE
     v_total_quantity INTEGER;
 BEGIN
     -- Find and mark expired reservations
-    UPDATE stock_reservations 
-    SET status = 'expired', updated_at = NOW()
-    WHERE status = 'active'
-    AND expires_at < NOW()
-    RETURNING COALESCE(SUM(quantity), 0) INTO v_total_quantity;
-    
-    GET DIAGNOSTICS v_updated_count = ROW_COUNT;
+    WITH updated AS (
+        UPDATE stock_reservations
+        SET status = 'expired', updated_at = NOW()
+        WHERE status = 'active'
+        AND expires_at < NOW()
+        RETURNING quantity
+    )
+    SELECT COALESCE(SUM(quantity), 0), COUNT(*)
+    INTO v_total_quantity, v_updated_count
+    FROM updated;
     
     -- Return results for logging
     RETURN json_build_object(
