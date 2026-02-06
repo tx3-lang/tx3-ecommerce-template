@@ -34,5 +34,6 @@ export const brandConfig: BrandConfig = {
 	},
 	features: {
 		enableShipping: false,
+		disableProductsPage: false,
 	},
 };

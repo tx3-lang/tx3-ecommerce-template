@@ -1,13 +1,21 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
 // Components
 import { ProductCard } from '@/components/ProductCard';
+
+// Config
+import { brandConfig } from '@/config/brand';
 
 // Hooks
 import { useCart } from '@/hooks/use-cart';
 import { useProducts } from '@/hooks/use-products';
 
 export const Route = createFileRoute('/(shop)/products')({
+	beforeLoad: () => {
+		if (brandConfig.features.disableProductsPage) {
+			throw redirect({ to: '/' });
+		}
+	},
 	component: ProductsPage,
 });
 

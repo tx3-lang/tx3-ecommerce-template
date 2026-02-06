@@ -4,6 +4,9 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 // Components
 import { ProductCard } from '@/components/ProductCard';
 
+// Config
+import { brandConfig } from '@/config/brand';
+
 // Hooks
 import { useCart } from '@/hooks/use-cart';
 
@@ -23,7 +26,8 @@ export const Route = createFileRoute('/')({
 });
 
 function HomePage() {
-	const { addItem } = useCart();
+	const { addItem, getItemQuantity } = useCart();
+	const disableProductsPage = brandConfig.features.disableProductsPage;
 
 	const {
 		data: featuredProducts = [],
@@ -81,12 +85,14 @@ function HomePage() {
 				<div className="container mx-auto px-4 text-center">
 					<h1 className="text-4xl md:text-6xl font-bold mb-6">Welcome to Our Store</h1>
 					<p className="text-xl md:text-2xl mb-8 opacity-90">Discover amazing products at great prices</p>
-					<Link
-						to="/products"
-						className="inline-block px-8 py-3 bg-primary-foreground text-primary rounded-lg font-semibold hover:bg-primary-foreground/90 transition-colors"
-					>
-						Shop Now
-					</Link>
+					{!disableProductsPage && (
+						<Link
+							to="/products"
+							className="inline-block px-8 py-3 bg-primary-foreground text-primary rounded-lg font-semibold hover:bg-primary-foreground/90 transition-colors"
+						>
+							Shop Now
+						</Link>
+					)}
 				</div>
 			</section>
 
@@ -102,18 +108,22 @@ function HomePage() {
 								variant="simple"
 								showAddToCart={true}
 								onAddToCart={handleAddToCart}
+								itemsInCart={getItemQuantity(product.id)}
+								simpleAction={disableProductsPage ? 'select' : 'link'}
 							/>
 						))}
 					</div>
 
-					<div className="text-center mt-12">
-						<Link
-							to="/products"
-							className="inline-block px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
-						>
-							View All Products
-						</Link>
-					</div>
+					{!disableProductsPage && (
+						<div className="text-center mt-12">
+							<Link
+								to="/products"
+								className="inline-block px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
+							>
+								View All Products
+							</Link>
+						</div>
+					)}
 				</div>
 			</section>
 		</div>

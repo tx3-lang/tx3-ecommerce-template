@@ -91,6 +91,8 @@ function ProductDetail() {
 	const { addItem, getItemQuantity, updateProductStock } = useCart();
 	const [quantity, setQuantity] = useState(1);
 	const enableShipping = brandConfig.features.enableShipping;
+	const hasProductsPage = !brandConfig.features.disableProductsPage;
+	const productsPath = hasProductsPage ? '/products' : '/';
 
 	const currentProductQuantity = getItemQuantity(productId);
 	const maxQuantity = product ? product.stock - currentProductQuantity : 1;
@@ -141,10 +143,10 @@ function ProductDetail() {
 					<h1 className="text-3xl font-bold text-gray-900 mb-4">Product Not Found</h1>
 					<p className="text-gray-600 mb-8">The product you're looking for doesn't exist or has been removed.</p>
 					<a
-						href="/products"
+						href={productsPath}
 						className="inline-flex items-center px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
 					>
-						Back to Products
+						{hasProductsPage ? 'Back to Products' : 'Back to Home'}
 					</a>
 				</div>
 			</div>
@@ -171,11 +173,13 @@ function ProductDetail() {
 					</li>
 					<li>/</li>
 					<li>
-						<a href="/products" className="hover:text-primary">
-							Products
-						</a>
+						{hasProductsPage && (
+							<a href={productsPath} className="hover:text-primary">
+								Products
+							</a>
+						)}
 					</li>
-					<li>/</li>
+					{hasProductsPage && <li>/</li>}
 					<li className="text-gray-900">{product.name}</li>
 				</ol>
 			</nav>

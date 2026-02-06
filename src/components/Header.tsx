@@ -18,6 +18,7 @@ export default function Header() {
 	const [isOpen, setIsOpen] = useState(false);
 	const [isMiniCartOpen, setIsMiniCartOpen] = useState(false);
 	const { itemCount } = useCart();
+	const disableProductsPage = brandConfig.features.disableProductsPage;
 
 	return (
 		<>
@@ -61,13 +62,15 @@ export default function Header() {
 
 							{/* Desktop Navigation */}
 							<nav className="hidden lg:flex items-center">
-								<Link
-									to="/products"
-									className="font-medium text-blue-100 hover:text-white transition-all duration-200 relative group"
-								>
-									Products
-									<span className="absolute bottom-0 left-0 w-0 h-0.5 bg-brand-primary transition-all duration-200 group-hover:w-full"></span>
-								</Link>
+								{!disableProductsPage && (
+									<Link
+										to="/products"
+										className="font-medium text-blue-100 hover:text-white transition-all duration-200 relative group"
+									>
+										Products
+										<span className="absolute bottom-0 left-0 w-0 h-0.5 bg-brand-primary transition-all duration-200 group-hover:w-full"></span>
+									</Link>
+								)}
 							</nav>
 						</div>
 
@@ -136,18 +139,20 @@ export default function Header() {
 						<span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">→</span>
 					</Link>
 
-					<Link
-						to="/products"
-						onClick={() => setIsOpen(false)}
-						className="group flex items-center gap-4 p-4 rounded-xl hover:bg-blue-800/50 transition-all duration-300 mb-3 hover:scale-105 active:scale-95"
-						activeProps={{
-							className:
-								'flex items-center gap-4 p-4 rounded-xl bg-linear-to-r from-brand-primary to-brand-secondary shadow-lg text-white',
-						}}
-					>
-						<span className="font-medium">Products</span>
-						<span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">→</span>
-					</Link>
+					{!disableProductsPage && (
+						<Link
+							to="/products"
+							onClick={() => setIsOpen(false)}
+							className="group flex items-center gap-4 p-4 rounded-xl hover:bg-blue-800/50 transition-all duration-300 mb-3 hover:scale-105 active:scale-95"
+							activeProps={{
+								className:
+									'flex items-center gap-4 p-4 rounded-xl bg-linear-to-r from-brand-primary to-brand-secondary shadow-lg text-white',
+							}}
+						>
+							<span className="font-medium">Products</span>
+							<span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">→</span>
+						</Link>
+					)}
 
 					<Link
 						to="/checkout"

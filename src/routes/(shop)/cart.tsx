@@ -21,6 +21,7 @@ function CartPage() {
 		enableStockValidation: true,
 	});
 	const enableShipping = brandConfig.features.enableShipping;
+	const productsPath = brandConfig.features.disableProductsPage ? '/' : '/products';
 
 	// Show skeleton while cart is loading
 	if (!isLoaded) {
@@ -77,7 +78,7 @@ function CartPage() {
 										<div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
 											<div className="text-sm text-gray-600">
 												Need to add more items?{' '}
-												<Link to="/products" className="text-blue-600 hover:text-blue-700 font-medium underline">
+												<Link to={productsPath} className="text-blue-600 hover:text-blue-700 font-medium underline">
 													Continue Shopping
 												</Link>
 											</div>

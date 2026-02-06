@@ -39,6 +39,7 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 		country: '',
 	});
 	const enableShipping = brandConfig.features.enableShipping;
+	const productsPath = brandConfig.features.disableProductsPage ? '/' : '/products';
 
 	const { items, total, clear, isEmpty, isLoaded: cartLoaded, currencyBreakdown } = useCart();
 	const { wallet, isConnected, connect, availableWallets } = useWallet();
@@ -318,10 +319,10 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 						Your cart is empty. Please add items to your cart before proceeding to checkout.
 					</p>
 					<a
-						href="/products"
+						href={productsPath}
 						className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
 					>
-						Continue Shopping
+						{productsPath === '/products' ? 'Continue Shopping' : 'Back to Home'}
 					</a>
 				</div>
 			</div>

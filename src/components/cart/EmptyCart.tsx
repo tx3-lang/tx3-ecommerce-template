@@ -4,6 +4,9 @@ import { Link } from '@tanstack/react-router';
 // Components
 import { Button } from '@/components/ui/button';
 
+// Config
+import { brandConfig } from '@/config/brand';
+
 // Lib
 import { cn } from '@/lib/utils';
 
@@ -13,6 +16,8 @@ interface EmptyCartProps {
 }
 
 export function EmptyCart({ compact = false, className }: EmptyCartProps) {
+	const productsPath = brandConfig.features.disableProductsPage ? '/' : '/products';
+
 	// Compact version for mini-cart
 	if (compact) {
 		return (
@@ -22,7 +27,7 @@ export function EmptyCart({ compact = false, className }: EmptyCartProps) {
 				</div>
 				<p className="text-sm font-medium text-white mb-1">Your cart is empty</p>
 				<p className="text-xs text-gray-400 mb-4">Add items to get started</p>
-				<Link to="/products">
+				<Link to={productsPath}>
 					<Button size="sm" className="w-full">
 						Browse Products
 					</Button>
@@ -51,7 +56,7 @@ export function EmptyCart({ compact = false, className }: EmptyCartProps) {
 
 				{/* Action Buttons */}
 				<div className="flex flex-col sm:flex-row gap-4 justify-center">
-					<Link to="/products">
+					<Link to={productsPath}>
 						<Button size="lg" className="w-full sm:w-auto">
 							<IconPackage size={20} className="mr-2" />
 							Browse Products

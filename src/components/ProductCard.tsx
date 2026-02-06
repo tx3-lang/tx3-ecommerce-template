@@ -10,6 +10,7 @@ export interface ProductCardProps {
 	showAddToCart?: boolean;
 	onAddToCart?: (product: Database.Product) => void;
 	itemsInCart?: number;
+	simpleAction?: 'link' | 'select';
 }
 
 export function ProductCard({
@@ -18,6 +19,7 @@ export function ProductCard({
 	showAddToCart = false,
 	onAddToCart,
 	itemsInCart = 0,
+	simpleAction = 'link',
 }: ProductCardProps) {
 	const handleAddToCart = (e: React.MouseEvent) => {
 		e.preventDefault();
@@ -37,6 +39,8 @@ export function ProductCard({
 
 	const isInStock = product.stock > 0;
 	const isOutOfStock = product.stock === 0;
+	const isSelectAction = variant === 'simple' && simpleAction === 'select';
+	const isSelectDisabled = isOutOfStock || itemsInCart >= product.stock;
 
 	const cardContent = (
 		<div className="border rounded-lg p-4 hover:shadow-lg transition-shadow duration-300">
@@ -75,9 +79,20 @@ export function ProductCard({
 			{variant === 'simple' && (
 				<div className="flex justify-between items-center">
 					<span className="font-bold">{priceString}</span>
-					<span className="px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors text-sm">
-						View
-					</span>
+					{isSelectAction ? (
+						<button
+							type="button"
+							onClick={handleAddToCart}
+							disabled={isSelectDisabled}
+							className="px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							Select
+						</button>
+					) : (
+						<span className="px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors text-sm">
+							View
+						</span>
+					)}
 				</div>
 			)}
 

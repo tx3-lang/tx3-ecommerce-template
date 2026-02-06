@@ -5,6 +5,9 @@ import { memo } from 'react';
 // Components
 import { Button } from '@/components/ui/button';
 
+// Config
+import { brandConfig } from '@/config/brand';
+
 // Lib
 import { formatPriceSyncById } from '@/lib/unified-formatter';
 
@@ -17,6 +20,8 @@ interface ConfirmationStepProps {
 function ConfirmationStepComponent({ createdOrders, error, onRetry }: ConfirmationStepProps) {
 	const navigate = useNavigate();
 	const hasOrders = createdOrders.length > 0;
+	const productsPath = brandConfig.features.disableProductsPage ? '/' : '/products';
+	const continueLabel = productsPath === '/products' ? 'Continue Shopping' : 'Back to Home';
 
 	return (
 		<div className="space-y-6 text-center">
@@ -98,8 +103,8 @@ function ConfirmationStepComponent({ createdOrders, error, onRetry }: Confirmati
 					</div>
 
 					<div className="flex gap-4">
-						<Button onClick={() => navigate({ to: '/products' })} className="flex-1">
-							Continue Shopping
+						<Button onClick={() => navigate({ to: productsPath })} className="flex-1">
+							{continueLabel}
 						</Button>
 					</div>
 				</div>

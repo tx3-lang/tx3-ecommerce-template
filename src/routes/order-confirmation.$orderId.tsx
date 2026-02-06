@@ -25,6 +25,8 @@ function OrderConfirmation() {
 	const { data: order, isLoading, error } = useOrder(orderId, walletAddress ?? undefined);
 	const isWalletReady = isConnected && !!walletAddress;
 	const enableShipping = brandConfig.features.enableShipping;
+	const hasProductsPage = !brandConfig.features.disableProductsPage;
+	const productsPath = hasProductsPage ? '/products' : '/';
 
 	if (!isWalletReady) {
 		return (
@@ -101,10 +103,10 @@ function OrderConfirmation() {
 					<h1 className="text-2xl font-bold text-gray-900 mb-2">Order Not Found</h1>
 					<p className="text-gray-600 mb-6">We couldn't find the order you're looking for.</p>
 					<a
-						href="/products"
+						href={productsPath}
 						className="inline-flex items-center px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
 					>
-						Back to Products
+						{hasProductsPage ? 'Back to Products' : 'Back to Home'}
 					</a>
 				</div>
 			</div>
@@ -251,10 +253,10 @@ function OrderConfirmation() {
 				<div className="mt-6 bg-white rounded-lg shadow-sm p-6">
 					<div className="flex flex-col sm:flex-row gap-4">
 						<a
-							href="/products"
+							href={productsPath}
 							className="flex-1 inline-flex items-center justify-center px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
 						>
-							Continue Shopping
+							{hasProductsPage ? 'Continue Shopping' : 'Back to Home'}
 						</a>
 
 						{isPaid && (

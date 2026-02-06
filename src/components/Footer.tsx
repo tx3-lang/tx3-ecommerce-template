@@ -12,6 +12,8 @@ import { Link } from '@tanstack/react-router';
 import { brandConfig } from '@/config/brand';
 
 export default function Footer() {
+	const disableProductsPage = brandConfig.features.disableProductsPage;
+
 	return (
 		<footer className="bg-gray-900 text-white border-t border-gray-800">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -33,9 +35,11 @@ export default function Footer() {
 							<Link to="/" className="block text-gray-400 hover:text-white transition-colors text-sm">
 								Home
 							</Link>
-							<Link to="/products" className="block text-gray-400 hover:text-white transition-colors text-sm">
-								Products
-							</Link>
+							{!disableProductsPage && (
+								<Link to="/products" className="block text-gray-400 hover:text-white transition-colors text-sm">
+									Products
+								</Link>
+							)}
 							<Link to="/cart" className="block text-gray-400 hover:text-white transition-colors text-sm">
 								Cart
 							</Link>
