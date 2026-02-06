@@ -1,8 +1,8 @@
 // This is a Deno Edge Function - TypeScript errors for Deno imports are expected
 // The function runs in Deno runtime, not in standard TypeScript/Node.js
 // Build errors related to Deno modules and Deno namespace can be ignored
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 // CORS headers for browser requests
 const corsHeaders = {
@@ -10,13 +10,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 }
-
-// Environment variables
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-
-// Create Supabase client with service role key
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 interface CleanupResult {
   success: boolean
@@ -26,10 +19,21 @@ interface CleanupResult {
   timestamp: string
 }
 
+interface HealthResponse {
+  status: 'ok'
+  timestamp: string
+}
+
 // Main cleanup function
 async function performOrderCleanup(): Promise<CleanupResult> {
   try {
     console.log('Starting order cleanup process...')
+    // Environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+    // Create Supabase client with service role key
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
     
     // Step 1: Cleanup expired stock reservations
     const { data: cleanupResult, error: cleanupError } = await supabase
@@ -80,10 +84,25 @@ async function performOrderCleanup(): Promise<CleanupResult> {
 }
 
 // HTTP request handler
-serve(async (req) => {
+Deno.serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
+  }
+
+  if (req.method === 'GET') {
+    const health: HealthResponse = {
+      status: 'ok',
+      timestamp: new Date().toISOString()
+    }
+
+    return new Response(
+      JSON.stringify(health),
+      {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
   }
 
   // Only allow POST requests for cleanup
