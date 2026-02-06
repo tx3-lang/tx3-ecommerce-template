@@ -1,6 +1,9 @@
 import { IconShoppingCart } from '@tabler/icons-react';
 import { Link } from '@tanstack/react-router';
 
+// Config
+import { brandConfig } from '@/config/brand';
+
 // Lib
 import { formatPriceSyncById } from '@/lib/unified-formatter';
 
@@ -41,6 +44,7 @@ export function ProductCard({
 	const isOutOfStock = product.stock === 0;
 	const isSelectAction = variant === 'simple' && simpleAction === 'select';
 	const isSelectDisabled = isOutOfStock || itemsInCart >= product.stock;
+	const isDetailDisabled = brandConfig.features.disableProductDetailPage;
 
 	const cardContent = (
 		<div className="border rounded-lg p-4 hover:shadow-lg transition-shadow duration-300">
@@ -109,6 +113,10 @@ export function ProductCard({
 			)}
 		</div>
 	);
+
+	if (isDetailDisabled) {
+		return <div className="group">{cardContent}</div>;
+	}
 
 	return (
 		<Link to="/product/$productId" params={{ productId: product.id }} className="group">

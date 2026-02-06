@@ -1,12 +1,14 @@
 import { IconShield, IconShoppingCart, IconTruck } from '@tabler/icons-react';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useEffect, useId, useState } from 'react';
 
 // Components
 import { QuantitySelector } from '@/components/ui/quantity-selector';
 
-// Hooks
+// Config
 import { brandConfig } from '@/config/brand';
+
+// Hooks
 import { useCart } from '@/hooks/use-cart';
 import { useProduct } from '@/hooks/use-products';
 
@@ -17,6 +19,12 @@ import { getSupabaseConfig } from '@/lib/supabase-seo';
 import { ADA_SYMBOL, convertFromSmallestUnit, formatPriceSyncById, getCurrencySymbol } from '@/lib/unified-formatter';
 
 export const Route = createFileRoute('/(shop)/product/$productId')({
+	beforeLoad: () => {
+		if (brandConfig.features.disableProductDetailPage) {
+			const target = brandConfig.features.disableProductsPage ? '/' : '/products';
+			throw redirect({ to: target });
+		}
+	},
 	component: ProductDetail,
 	loader: async ({ params: { productId } }) => {
 		try {
