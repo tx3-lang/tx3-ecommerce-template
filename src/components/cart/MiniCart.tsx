@@ -1,11 +1,19 @@
 import { IconShoppingCart, IconX } from '@tabler/icons-react';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
+
+// Components
 import { CartItem } from '@/components/cart/CartItem';
 import { CartSummary } from '@/components/cart/CartSummary';
 import { EmptyCart } from '@/components/cart/EmptyCart';
+
+// Config
+import { brandConfig } from '@/config/brand';
+
+// Hooks
 import { useCart } from '@/hooks/use-cart';
 
+// Libs
 import { cn } from '@/lib/utils';
 
 interface MiniCartProps {
@@ -14,6 +22,7 @@ interface MiniCartProps {
 }
 
 export function MiniCart({ isOpen, onClose }: MiniCartProps) {
+	const disableCartFlow = brandConfig.features.disableCartFlow;
 	const { items, total, itemCount, updateQuantity, removeItem, currencyBreakdown } = useCart();
 	const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -45,7 +54,7 @@ export function MiniCart({ isOpen, onClose }: MiniCartProps) {
 		};
 	}, [isOpen, onClose]);
 
-	if (!isOpen) return null;
+	if (!isOpen || disableCartFlow) return null;
 
 	return (
 		<>

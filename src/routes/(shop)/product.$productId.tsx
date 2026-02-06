@@ -1,5 +1,5 @@
 import { IconShield, IconShoppingCart, IconTruck } from '@tabler/icons-react';
-import { createFileRoute, redirect } from '@tanstack/react-router';
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { useEffect, useId, useState } from 'react';
 
 // Components
@@ -99,8 +99,10 @@ function ProductDetail() {
 	const { addItem, getItemQuantity, updateProductStock } = useCart();
 	const [quantity, setQuantity] = useState(1);
 	const enableShipping = brandConfig.features.enableShipping;
+	const disableCartFlow = brandConfig.features.disableCartFlow;
 	const hasProductsPage = !brandConfig.features.disableProductsPage;
 	const productsPath = hasProductsPage ? '/products' : '/';
+	const navigate = useNavigate();
 
 	const currentProductQuantity = getItemQuantity(productId);
 	const maxQuantity = product ? product.stock - currentProductQuantity : 1;
@@ -163,6 +165,9 @@ function ProductDetail() {
 
 	const handleAddToCart = () => {
 		addItem(product.id, quantity, product);
+		if (disableCartFlow) {
+			navigate({ to: '/checkout' });
+		}
 	};
 
 	const priceString = formatPriceSyncById(product.price, product.token_id, {

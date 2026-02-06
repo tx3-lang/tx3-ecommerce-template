@@ -36,5 +36,6 @@ export const brandConfig: BrandConfig = {
 		enableShipping: false,
 		disableProductsPage: false,
 		disableProductDetailPage: false,
+		disableCartFlow: false,
 	},
 };

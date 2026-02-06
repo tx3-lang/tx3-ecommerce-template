@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute, Link, redirect } from '@tanstack/react-router';
 
 // Components
 import { CartItem } from '@/components/cart/CartItem';
@@ -12,6 +12,11 @@ import { useCart } from '@/hooks/use-cart';
 import { useCartItems } from '@/hooks/use-cart-items';
 
 export const Route = createFileRoute('/(shop)/cart')({
+	beforeLoad: () => {
+		if (brandConfig.features.disableCartFlow) {
+			throw redirect({ to: '/checkout' });
+		}
+	},
 	component: CartPage,
 });
 

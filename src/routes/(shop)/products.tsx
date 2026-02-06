@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from '@tanstack/react-router';
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 
 // Components
 import { ProductCard } from '@/components/ProductCard';
@@ -22,9 +22,14 @@ export const Route = createFileRoute('/(shop)/products')({
 function ProductsPage() {
 	const { data: products, isLoading, error } = useProducts();
 	const { addItem, getItemQuantity } = useCart();
+	const disableCartFlow = brandConfig.features.disableCartFlow;
+	const navigate = useNavigate();
 
 	const handleAddToCart = (product: Database.Product) => {
 		addItem(product.id, 1, product);
+		if (disableCartFlow) {
+			navigate({ to: '/checkout' });
+		}
 	};
 
 	// Loading state

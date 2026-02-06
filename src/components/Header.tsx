@@ -18,7 +18,7 @@ export default function Header() {
 	const [isOpen, setIsOpen] = useState(false);
 	const [isMiniCartOpen, setIsMiniCartOpen] = useState(false);
 	const { itemCount } = useCart();
-	const disableProductsPage = brandConfig.features.disableProductsPage;
+	const { disableProductsPage, disableCartFlow } = brandConfig.features;
 
 	return (
 		<>
@@ -78,7 +78,12 @@ export default function Header() {
 						<div className="flex items-center">
 							<button
 								type="button"
-								onClick={() => setIsMiniCartOpen(!isMiniCartOpen)}
+								onClick={() => {
+									if (disableCartFlow) {
+										return;
+									}
+									setIsMiniCartOpen(!isMiniCartOpen);
+								}}
 								className="group relative p-2 hover:bg-blue-800/30 rounded-lg transition-all duration-200"
 								aria-label={`Shopping cart with ${itemCount} items`}
 							>
@@ -95,7 +100,9 @@ export default function Header() {
 							</button>
 
 							{/* MiniCart Dropdown */}
-							<MiniCart isOpen={isMiniCartOpen} onClose={() => setIsMiniCartOpen(false)} />
+							{!disableCartFlow && (
+								<MiniCart isOpen={isMiniCartOpen} onClose={() => setIsMiniCartOpen(false)} />
+							)}
 						</div>
 					</div>
 				</div>

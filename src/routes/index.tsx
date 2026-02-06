@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 
 // Components
 import { ProductCard } from '@/components/ProductCard';
@@ -28,6 +28,8 @@ export const Route = createFileRoute('/')({
 function HomePage() {
 	const { addItem, getItemQuantity } = useCart();
 	const disableProductsPage = brandConfig.features.disableProductsPage;
+	const disableCartFlow = brandConfig.features.disableCartFlow;
+	const navigate = useNavigate();
 
 	const {
 		data: featuredProducts = [],
@@ -40,6 +42,9 @@ function HomePage() {
 
 	const handleAddToCart = (product: Database.Product) => {
 		addItem(product.id, 1, product);
+		if (disableCartFlow) {
+			navigate({ to: '/checkout' });
+		}
 	};
 
 	if (isLoading) {
