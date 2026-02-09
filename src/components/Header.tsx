@@ -100,9 +100,7 @@ export default function Header() {
 							</button>
 
 							{/* MiniCart Dropdown */}
-							{!disableCartFlow && (
-								<MiniCart isOpen={isMiniCartOpen} onClose={() => setIsMiniCartOpen(false)} />
-							)}
+							{!disableCartFlow && <MiniCart isOpen={isMiniCartOpen} onClose={() => setIsMiniCartOpen(false)} />}
 						</div>
 					</div>
 				</div>
