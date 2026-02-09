@@ -1,3 +1,4 @@
+import '@fontsource-variable/inter';
 import { TanStackDevtools } from '@tanstack/react-devtools';
 import type { QueryClient } from '@tanstack/react-query';
 import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';
@@ -13,7 +14,6 @@ import { CartProvider } from '@/contexts/CartContext';
 import { generateMetaTags } from '@/lib/seo';
 
 // Styles
-import brandCss from '@/styles/brand.css?url';
 import appCss from '@/styles.css?url';
 
 export const Route = createRootRouteWithContext<{
@@ -37,10 +37,6 @@ export const Route = createRootRouteWithContext<{
 				{
 					rel: 'stylesheet',
 					href: appCss,
-				},
-				{
-					rel: 'stylesheet',
-					href: brandCss,
 				},
 			],
 		};
