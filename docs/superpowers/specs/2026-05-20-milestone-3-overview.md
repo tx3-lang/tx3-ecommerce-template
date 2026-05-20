@@ -67,7 +67,6 @@ u5c (UTxORPC) — txpipe's native protocol. Both dolos local and preview-facing 
 | `MERCHANT_ADDRESS` | All | Bech32 address derived from the backend signer key. |
 | `MERCHANT_SIGNING_KEY` | All | Ed25519 signing key (hex). Server-side only; never exposed to the client. |
 | `METADATA_LABEL` | A | Default `1337`. Custom label for order-event metadata. |
-| `ADMIN_WALLET_WHITELIST` | A, B | Comma-separated bech32 addresses authorised to use the admin panel. |
 
 Convention: one file per profile.
 - `.env.local` — dolos local development.
@@ -87,3 +86,12 @@ All three features must produce **public preview tx hashes** as evidence for the
 - C: at least 2 badge tokens minted (e.g., one for buyer, one for seller).
 
 CardanoScan preview links are collected in `docs/advanced-onchain.md` (output D).
+
+### 8. Scope: milestone-mode
+
+The three features are built to the **minimum scope required to produce milestone evidence**, not to a production-ready UX. Concretely:
+
+- **Buyer-facing UI** (checkout flow, order confirmation timeline) is implemented — it is the visible surface in the video walkthrough.
+- **Merchant actions** (mark shipped, release escrow, refund, mint badges) are exposed as **CLI scripts under `scripts/`** that run locally with the merchant env vars. No admin dashboard, no in-app auth flow for merchants.
+- **Reconciliation** of unconfirmed txs is a manual script (`pnpm reconcile-events`), not a scheduled job.
+- Production-grade extensions (admin dashboard, wallet-based merchant auth, scheduled reconciler, dispute/arbitration UI) are explicitly out of scope and tracked as future improvements at the bottom of each per-feature spec.

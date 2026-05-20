@@ -69,12 +69,13 @@ Cardano metadata size limit is 16 KB per tx; the payload is well under 1 KB.
 | `src/lib/cardano/network.ts` | Loads env (`TX3_TRP_ENDPOINT`, `TX3_PROFILE`, `METADATA_LABEL`, `MERCHANT_ADDRESS`). Exposes `getNetworkConfig()`. |
 | `src/lib/cardano/u5c-client.ts` | Thin wrapper over the u5c client used by `tx3-sdk`. Exposes `getMerchantUtxos()` and reuses the SDK's submission path. |
 | `src/lib/cardano/signer.ts` | Loads `MERCHANT_SIGNING_KEY` and builds an `Ed25519Signer` instance. Exposes `getMerchantSigner()` (memoised). Throws on first call if the env is missing. |
-| `src/lib/cardano/traceability.ts` | Per-event functions: `submitPaidTrace(orderId)`, `submitShippedTrace(orderId, {trackingNumber?})`, `submitCompletedTrace(orderId)`, `submitCancelledTrace(orderId, {reason})`. Each returns `{ txHash, confirmed: boolean }`. |
+| `src/lib/cardano/traceability.ts` | Per-event functions: `submitPaidTrace(orderId)`, `submitShippedTrace(orderId, {trackingNumber?})`, `submitCompletedTrace(orderId)`, `submitCancelledTrace(orderId, {reason})`. Each returns `{ txHash, confirmed: boolean }`. Used by both server-fns (for buyer-triggered `paid`) and CLI scripts (for merchant-triggered events). |
 | `supabase/migrations/2026MMDD_order_events.sql` | Creates `order_events` table + RLS. See schema below. |
-| `src/routes/(admin)/_layout.tsx` | Auth gate: requires connected CIP-30 wallet whose address is in `ADMIN_WALLET_WHITELIST`. |
-| `src/routes/(admin)/orders.tsx` | Admin table of orders with action buttons (`Mark shipped`, `Mark completed`, `Cancel`). Calls server-fns. |
-| `src/components/admin/OrderRow.tsx` | Row component with action buttons + status pill. |
-| `src/components/order/OrderTraceTimeline.tsx` | Renders `order_events` as a vertical timeline with explorer links. |
+| `scripts/mark-order-shipped.ts` | CLI: takes `--order-id` (and optional `--tracking`), validates transition, calls `submitShippedTrace`, persists `order_events` row, updates `orders.status`. Uses service-role DB client + backend signer directly. |
+| `scripts/mark-order-completed.ts` | CLI: same shape, for `paid|shipped → completed`. |
+| `scripts/cancel-order.ts` | CLI: same shape, for `cancelled` from any pre-completed state. Takes `--reason`. |
+| `scripts/reconcile-events.ts` | CLI: scans `order_events WHERE confirmed_at IS NULL` and re-runs `waitForConfirmed` for each. Run manually when needed. |
+| `src/components/order/OrderTraceTimeline.tsx` | Renders `order_events` as a vertical timeline with explorer links. Used in buyer-facing order confirmation page. |
 
 ### Modified files
 
@@ -82,7 +83,7 @@ Cardano metadata size limit is 16 KB per tx; the payload is well under 1 KB.
 |---|---|
 | `tx3/main.tx3` | Add `record_order_event(merchant_input, metadata_payload)` tx: self-payment of min-ADA from merchant to merchant with metadata attached. |
 | `tx3/trix.toml` | Add `[profiles.local]` and `[profiles.preview]` blocks pointing to their respective TRP endpoints. |
-| `src/server-fns/orders.ts` | After each status transition (`updateOrderStatus(orderId, newStatus, ...)`), call the matching `submit*Trace(...)` function inside the same SQL transaction. Rollback on submission failure. |
+| `src/server-fns/orders.ts` | After the buyer's payment is verified and `status` flips to `paid`, call `submitPaidTrace(orderId)` inside the same SQL transaction. Rollback on submission failure. Other status transitions are driven by CLI scripts, not server-fns. |
 | `@types/database.d.ts` | Add `OrderEvent` interface. Extend `Order` with `events?: OrderEvent[]` (eager-loaded). |
 | `src/routes/order-confirmation.$orderId.tsx` | Add `<OrderTraceTimeline events={order.events} />` below the existing summary. |
 | `src/hooks/use-orders.ts` | Eager-load `order_events` in the existing query. |
@@ -126,18 +127,20 @@ The `UNIQUE(order_id, event_type)` prevents duplicate event rows under concurren
 
 ### Happy path: shipped (and analogous: completed, cancelled)
 
-1. Admin (whitelisted wallet) opens `(admin)/orders.tsx`.
-2. Clicks "Mark shipped" on an order in `paid`. UI prompts optional tracking number.
-3. `markOrderShipped({orderId, trackingNumber?})` server-fn:
+1. Merchant runs `pnpm tsx scripts/mark-order-shipped.ts --order-id <uuid> --tracking <code>` from a machine with the production env vars loaded.
+2. The script:
+   - Connects to the DB via the service-role Supabase client.
    - `SELECT ... FOR UPDATE` on the order row; assert current status is `paid`.
-   - Call `submitShippedTrace(orderId, {trackingNumber})`.
+   - Calls `submitShippedTrace(orderId, {trackingNumber})`.
    - On success: insert `order_events` row + `UPDATE orders SET status='shipped'` in one SQL transaction.
-   - On submission failure: rollback the SQL transaction; the order stays in `paid`. Return error to the client.
-4. UI shows toast with tx hash linking to the explorer.
+   - On submission failure: rollback the SQL transaction; the order stays in `paid`. Exit non-zero with the error message.
+3. Script prints the tx hash + CardanoScan link to stdout for the operator to record.
+
+The buyer-facing order confirmation page picks up the new event on the next fetch (no admin UI involved).
 
 ### Reconciliation of pending confirmations
 
-A background job (Supabase pg_cron, hourly) selects from `order_events WHERE confirmed_at IS NULL` and re-invokes `waitForConfirmed` for each tx hash. The job exists because the synchronous waitForConfirmed in the server-fn has a bounded timeout and may complete before the chain emits the block.
+When `waitForConfirmed` times out in the server-fn or script, the `order_events` row is persisted with `confirmed_at = NULL` and the tx hash already known. Running `pnpm tsx scripts/reconcile-events.ts` scans those rows and re-invokes `waitForConfirmed` to fill `confirmed_at`. Run manually after a window where events are expected to have confirmed; not scheduled as a cron job in milestone-mode.
 
 ## Error handling
 
@@ -156,14 +159,14 @@ A background job (Supabase pg_cron, hourly) selects from `order_events WHERE con
 - If a retry re-submits the same conceptual event, the second `INSERT` fails on the constraint and the SQL transaction rolls back — but the first tx is already on-chain, so the system state is correct: one event, one tx.
 - The status transition is gated by `SELECT ... FOR UPDATE`, so a retry against an already-transitioned order returns `409` without submitting a new tx.
 
-## Auth model for the admin panel
+## Auth model for merchant actions (milestone-mode)
 
-- The merchant connects their CIP-30 wallet on `(admin)/_layout.tsx`.
-- The layout reads `ADMIN_WALLET_WHITELIST` (comma-separated bech32 addresses) from env.
-- If the connected wallet's address is in the whitelist, render the admin shell. Otherwise show a "Not authorised" page.
-- Server-fns also verify the caller's wallet address against the whitelist (defence in depth — frontend gate alone is not trusted).
+There is no in-app merchant auth in milestone-mode. Merchant-initiated transitions (`shipped`, `completed`, `cancelled`) are run as CLI scripts on a machine that has:
+- `SUPABASE_SERVICE_ROLE_KEY` — full DB access (already present in the project).
+- `MERCHANT_SIGNING_KEY` — the backend signer key.
+- `TX3_TRP_ENDPOINT` + `TX3_PROFILE` — chain access config.
 
-Wallet auth on server-fns is implemented by signing a nonce: the admin signs a server-issued challenge, the server verifies the signature, and stores a short-lived session token. The exact pattern (challenge endpoint, signature verification, session storage) is an implementation-plan concern; the existing wallet integration in `src/lib/cardano.ts` + `src/hooks/use-wallet.ts` will be reviewed at plan time to decide whether to extend it or add a new module.
+Anyone with that env can run the scripts; security boundary is the machine, not the app. A production iteration would introduce a wallet-gated admin panel (see "Future improvements" below).
 
 ## Testing strategy
 
@@ -184,9 +187,11 @@ Wallet auth on server-fns is implemented by signing a nonce: the admin signs a s
 
 ## Open questions / future improvements
 
-- **Async confirmation** — current design awaits `waitForConfirmed` in the server-fn. On preview (~20s block time) this blocks the admin click. If UX becomes an issue, change to "submit and return immediately; background worker confirms". Doable without schema changes (`confirmed_at` is already nullable).
+- **Async confirmation** — current design awaits `waitForConfirmed` in the server-fn and scripts. On preview (~20s block time) this can hold a script for a block period. If demos become slow, change to "submit and return immediately; reconcile later". Doable without schema changes (`confirmed_at` is already nullable).
 - **Enriching the payment tx vs separate paid tx** — chose separate paid tx to keep schema uniform. Could later swap to enriching by adding metadata to `pay_with_ada` / `pay_with_tokens`; the indexer would just see a paid event on a tx that also moves funds.
 - **Schema evolution** — payload field `v: 1` is a forward-compatibility hook. Bumping is a future concern.
+- **Wallet-gated admin panel** — milestone-mode uses CLI scripts. A production iteration would expose the same operations through a TanStack admin route protected by wallet auth (CIP-30 nonce signature). Out of scope for this milestone; introduce when the platform serves multiple merchants or non-developer operators.
+- **Scheduled reconciler** — milestone-mode is a manual script. A production iteration would run it on Supabase pg_cron (e.g., hourly) to fill `confirmed_at` automatically.
 
 ## Implementation phases (preview — actual plan goes through writing-plans)
 
@@ -194,8 +199,7 @@ Wallet auth on server-fns is implemented by signing a nonce: the admin signs a s
 2. **Phase 1 — DB:** migration + types + repo helpers.
 3. **Phase 2 — tx3:** add `record_order_event` tx, regenerate ts-client.
 4. **Phase 3 — traceability module:** the four `submit*Trace` functions, with unit tests.
-5. **Phase 4 — server-fn integration:** wire status-change handlers.
-6. **Phase 5 — admin panel:** auth gate + orders table + action handlers.
+5. **Phase 4 — server-fn integration:** wire `submitPaidTrace` into the payment confirmation flow.
+6. **Phase 5 — CLI scripts:** `mark-order-shipped`, `mark-order-completed`, `cancel-order`, `reconcile-events`.
 7. **Phase 6 — buyer UI:** timeline component on order confirmation.
-8. **Phase 7 — reconciler:** pg_cron job for unconfirmed events.
-9. **Phase 8 — preview evidence:** run against `.env.preview`, capture 3 tx hashes, record for D.
+8. **Phase 7 — preview evidence:** run against `.env.preview`, capture 3 tx hashes, record for D.
