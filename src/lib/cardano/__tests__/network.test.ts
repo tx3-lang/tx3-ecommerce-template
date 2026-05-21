@@ -107,6 +107,21 @@ describe('getNetworkConfig', () => {
 		});
 	});
 
+	describe('METADATA_LABEL validation', () => {
+		it('throws INVALID_ENV when METADATA_LABEL is a non-numeric string', async () => {
+			process.env.METADATA_LABEL = 'foo';
+			const { getNetworkConfig } = await loadFresh();
+			expect(() => getNetworkConfig()).toThrow('INVALID_ENV');
+			expect(() => getNetworkConfig()).toThrow('METADATA_LABEL');
+		});
+
+		it('uses default 1337 when METADATA_LABEL is an empty string', async () => {
+			process.env.METADATA_LABEL = '';
+			const { getNetworkConfig } = await loadFresh();
+			expect(getNetworkConfig().metadataLabel).toBe(1337);
+		});
+	});
+
 	describe('memoisation', () => {
 		it('returns the same object reference on repeated calls', async () => {
 			const { getNetworkConfig } = await loadFresh();

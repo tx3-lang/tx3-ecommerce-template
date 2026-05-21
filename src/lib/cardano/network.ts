@@ -47,7 +47,16 @@ export function getNetworkConfig(): NetworkConfig {
 	}
 
 	const metadataLabelRaw = process.env.METADATA_LABEL;
-	const metadataLabel = metadataLabelRaw !== undefined ? Number(metadataLabelRaw) : DEFAULT_METADATA_LABEL;
+	let metadataLabel: number;
+	if (metadataLabelRaw !== undefined && metadataLabelRaw !== '') {
+		const parsed = Number(metadataLabelRaw);
+		if (!Number.isInteger(parsed)) {
+			throw new Error('INVALID_ENV: METADATA_LABEL must be a valid integer');
+		}
+		metadataLabel = parsed;
+	} else {
+		metadataLabel = DEFAULT_METADATA_LABEL;
+	}
 
 	_config = {
 		trpEndpoint,
