@@ -17,8 +17,11 @@ const mockUpdate = vi.fn(() => ({ eq: vi.fn(() => ({ error: null })) }));
 const mockOrder = vi.fn();
 const mockEq = vi.fn();
 
-// mockFrom returns different builder chains depending on the method called
-const mockFrom = vi.fn((table: string) => {
+// mockFrom returns different builder chains depending on the method called.
+// Typed as () => unknown so individual tests can mockReturnValueOnce with
+// shapes that don't match the default builder (e.g. listOrderEvents uses a
+// deeper select().eq().order() chain than the default).
+const mockFrom = vi.fn<(table: string) => unknown>((table: string) => {
 	void table;
 	return {
 		insert: mockInsert,

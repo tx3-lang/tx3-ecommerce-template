@@ -28,12 +28,18 @@ declare namespace Database {
 
 	type OrderEventType = 'paid' | 'shipped' | 'completed' | 'cancelled';
 
+	// JSON value type — concrete enough for TanStack Start's server-fn return
+	// inference to serialise cleanly. `Record<string, unknown>` here breaks
+	// `createServerFn` typing in src/server-fns/orders.ts.
+	type JsonPrimitive = string | number | boolean | null;
+	type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
 	interface OrderEvent {
 		id: string;
 		order_id: string;
 		event_type: OrderEventType;
 		tx_hash: string;
-		payload: Record<string, unknown>;
+		payload: { [key: string]: JsonValue };
 		submitted_at: string;
 		confirmed_at: string | null;
 	}
