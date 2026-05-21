@@ -12,15 +12,3 @@ family = "cardano"
 plugin = "ts-client"
 output_dir = "../src/lib/tx3"
 ref = "codegen-v1beta0"
-
-[profiles.local]
-network = "CardanoDevnet"
-
-[profiles.local.trp]
-url = "http://localhost:8164"
-
-[profiles.preview]
-network = "CardanoPreview"
-
-[profiles.preview.trp]
-url = "https://trp.preview.txpipe.io"
