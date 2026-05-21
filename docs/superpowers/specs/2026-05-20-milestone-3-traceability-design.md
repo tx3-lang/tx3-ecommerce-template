@@ -107,8 +107,8 @@ CREATE INDEX order_events_unconfirmed_idx ON order_events(confirmed_at) WHERE co
 ```
 
 RLS:
-- `SELECT` for the order's `wallet_address` and for any admin wallet in `ADMIN_WALLET_WHITELIST`.
-- `INSERT` / `UPDATE` only via service role from server-fns.
+- `SELECT` for the order's `wallet_address` (matched against `current_setting('app.current_wallet')`).
+- `INSERT` / `UPDATE` exclusively via service role from server-fns and CLI scripts. Service role bypasses RLS, so no explicit admin policy is needed in milestone-mode.
 
 The `UNIQUE(order_id, event_type)` prevents duplicate event rows under concurrent retries.
 
