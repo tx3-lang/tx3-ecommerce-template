@@ -27,10 +27,10 @@
  *        if the orchestrator's call shape changes.
  */
 
-import { Client } from 'tx3-sdk/trp';
 import type { ProtoTxRequest, ResolveResponse, SubmitParams } from 'tx3-sdk/trp';
-import { getNetworkConfig } from './network.js';
+import { Client } from 'tx3-sdk/trp';
 import type { NetworkConfig } from './network.js';
+import { getNetworkConfig } from './network.js';
 
 // Re-export SDK types so callers can reference them without importing tx3-sdk directly
 export type { ProtoTxRequest, ResolveResponse, SubmitParams };
