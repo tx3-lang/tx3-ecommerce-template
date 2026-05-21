@@ -8,8 +8,23 @@
  * All errors thrown by the underlying Client are caught and re-thrown as a
  * typed ChainUnavailable error so callers have a single error type to handle.
  *
- * Note: tx3-sdk@0.7.0 exposes resolve() and submit() only. checkStatus() is
- * not present in the installed package version.
+ * SDK version note (2026-05-21):
+ *   Currently built against tx3-sdk@0.7.0, which exposes only:
+ *     - Client.resolve(ProtoTxRequest): Promise<ResolveResponse>
+ *     - Client.submit(SubmitParams): Promise<void>   (returns void; tx hash not surfaced)
+ *
+ *   The newer SDK at /sdks/web-sdk (not yet published as 0.7.0 successor) exposes:
+ *     - TrpClient.submit(...): Promise<SubmitResponse>  (response includes hash)
+ *     - TrpClient.checkStatus(hashes): Promise<CheckStatusResponse>
+ *     - Higher-level facade: tx3.tx("...").arg(...).resolve().sign().submit().waitForConfirmed(PollConfig)
+ *
+ *   When the package is upgraded to a version that includes these:
+ *     1. Add `checkStatus(hashes: string[]): Promise<CheckStatusResponse>` to U5cClient.
+ *     2. Change submit() return type to Promise<SubmitResponse> so callers can capture the tx hash.
+ *     3. Adopt the facade in the traceability orchestrator (Task A7+) so `waitForConfirmed`
+ *        replaces the manual hash extraction + status polling currently required by 0.7.0.
+ *     4. Update the relevant tasks in docs/superpowers/plans/2026-05-21-milestone-3-traceability.md
+ *        if the orchestrator's call shape changes.
  */
 
 import { Client } from 'tx3-sdk/trp';
