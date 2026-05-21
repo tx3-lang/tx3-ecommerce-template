@@ -26,6 +26,18 @@ declare namespace Database {
 		created_at: string;
 	}
 
+	type OrderEventType = 'paid' | 'shipped' | 'completed' | 'cancelled';
+
+	interface OrderEvent {
+		id: string;
+		order_id: string;
+		event_type: OrderEventType;
+		tx_hash: string;
+		payload: Record<string, unknown>;
+		submitted_at: string;
+		confirmed_at: string | null;
+	}
+
 	interface Order {
 		id: string;
 		wallet_address: string;
@@ -44,6 +56,7 @@ declare namespace Database {
 		deleted_at: string | null;
 		supported_tokens: SupportedToken | null;
 		shipping_info?: ShippingInfo | null;
+		events?: OrderEvent[] | null;
 	}
 
 	interface ShippingInfo {
