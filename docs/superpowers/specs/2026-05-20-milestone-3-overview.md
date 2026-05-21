@@ -65,7 +65,7 @@ u5c (UTxORPC) — txpipe's native protocol. Both dolos local and preview-facing 
 | `TX3_TRP_ENDPOINT` | All | TRP server URL (dolos local or preview TRP). |
 | `TX3_PROFILE` | All | `local` or `preview`. Must match a profile defined in `tx3/trix.toml`. |
 | `MERCHANT_ADDRESS` | All | Bech32 address derived from the backend signer key. |
-| `MERCHANT_SIGNING_KEY` | All | Ed25519 signing key (hex). Server-side only; never exposed to the client. |
+| `CARDANO_MERCHANT_SKEY` | All | Ed25519 signing key (hex). Server-side only; never exposed to the client. |
 | `METADATA_LABEL` | A | Default `1337`. Custom label for order-event metadata. |
 | `ESCROW_SHIP_DEADLINE_SECONDS` | B | Default `2592000` (30d). Preview demo uses `300` (5 min). |
 | `ESCROW_GRACE_PERIOD_SECONDS` | B | Default `1209600` (14d). Preview demo uses `300` (5 min). |

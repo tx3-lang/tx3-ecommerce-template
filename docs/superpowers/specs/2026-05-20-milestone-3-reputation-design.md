@@ -152,7 +152,7 @@ The UNIQUE constraint is the off-chain line of defence against double-mint. The 
 
 ### Environment variables
 
-No new env vars. The same `MERCHANT_SIGNING_KEY` and `MERCHANT_ADDRESS` from A and B cover all needs.
+No new env vars. The same `CARDANO_MERCHANT_SKEY` and `MERCHANT_ADDRESS` from A and B cover all needs.
 
 ## Data flow
 
@@ -279,7 +279,7 @@ Reuses the escrow → release flow as precondition.
 
 ### Preview evidence run (C2)
 
-`.env.preview` reuses the same `MERCHANT_SIGNING_KEY` as A and B. Demo escrow timeouts (`300s` each) make a full end-to-end demo possible in under 15 minutes.
+`.env.preview` reuses the same `CARDANO_MERCHANT_SKEY` as A and B. Demo escrow timeouts (`300s` each) make a full end-to-end demo possible in under 15 minutes.
 
 **Demo script:**
 

@@ -66,7 +66,7 @@
 
 ### Task 3: Phase 0 — Backend signer module
 
-**Goal:** Provide a memoised `Ed25519Signer` for the merchant, loaded from `MERCHANT_SIGNING_KEY` + `MERCHANT_ADDRESS`. Used by server-fns and CLI scripts.
+**Goal:** Provide a memoised `Ed25519Signer` for the merchant, loaded from `CARDANO_MERCHANT_SKEY` + `MERCHANT_ADDRESS`. Used by server-fns and CLI scripts.
 
 **Files:**
 - Create: `src/lib/cardano/signer.ts`
@@ -76,7 +76,7 @@
 
 - [ ] **Step 1: Write failing tests**
   - Test: returns a signer instance when env is populated.
-  - Test: throws on missing `MERCHANT_SIGNING_KEY` with a clear message.
+  - Test: throws on missing `CARDANO_MERCHANT_SKEY` with a clear message.
   - Test: throws on malformed hex key.
   - Test: signer instance is reused across calls (identity check).
 - [ ] **Step 2: Run the tests** — Expected: FAIL.

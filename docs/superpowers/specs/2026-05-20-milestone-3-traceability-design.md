@@ -68,7 +68,7 @@ Cardano metadata size limit is 16 KB per tx; the payload is well under 1 KB.
 |---|---|
 | `src/lib/cardano/network.ts` | Loads env (`TX3_TRP_ENDPOINT`, `TX3_PROFILE`, `METADATA_LABEL`, `MERCHANT_ADDRESS`). Exposes `getNetworkConfig()`. |
 | `src/lib/cardano/u5c-client.ts` | Thin wrapper over the u5c client used by `tx3-sdk`. Exposes `getMerchantUtxos()` and reuses the SDK's submission path. |
-| `src/lib/cardano/signer.ts` | Loads `MERCHANT_SIGNING_KEY` and builds an `Ed25519Signer` instance. Exposes `getMerchantSigner()` (memoised). Throws on first call if the env is missing. |
+| `src/lib/cardano/signer.ts` | Loads `CARDANO_MERCHANT_SKEY` and builds an `Ed25519Signer` instance. Exposes `getMerchantSigner()` (memoised). Throws on first call if the env is missing. |
 | `src/lib/cardano/traceability.ts` | Per-event functions: `submitPaidTrace(orderId)`, `submitShippedTrace(orderId, {trackingNumber?})`, `submitCompletedTrace(orderId)`, `submitCancelledTrace(orderId, {reason})`. Each returns `{ txHash, confirmed: boolean }`. Used by both server-fns (for buyer-triggered `paid`) and CLI scripts (for merchant-triggered events). |
 | `supabase/migrations/2026MMDD_order_events.sql` | Creates `order_events` table + RLS. See schema below. |
 | `scripts/mark-order-shipped.ts` | CLI: takes `--order-id` (and optional `--tracking`), validates transition, calls `submitShippedTrace`, persists `order_events` row, updates `orders.status`. Uses service-role DB client + backend signer directly. |
@@ -163,7 +163,7 @@ When `waitForConfirmed` times out in the server-fn or script, the `order_events`
 
 There is no in-app merchant auth in milestone-mode. Merchant-initiated transitions (`shipped`, `completed`, `cancelled`) are run as CLI scripts on a machine that has:
 - `SUPABASE_SERVICE_ROLE_KEY` — full DB access (already present in the project).
-- `MERCHANT_SIGNING_KEY` — the backend signer key.
+- `CARDANO_MERCHANT_SKEY` — the backend signer key.
 - `TX3_TRP_ENDPOINT` + `TX3_PROFILE` — chain access config.
 
 Anyone with that env can run the scripts; security boundary is the machine, not the app. A production iteration would introduce a wallet-gated admin panel (see "Future improvements" below).
@@ -173,7 +173,7 @@ Anyone with that env can run the scripts; security boundary is the machine, not 
 ### Unit (Vitest)
 - `traceability.test.ts` — mocks u5c + signer, asserts payload shape per event.
 - `network.test.ts` — env var loading, profile selection.
-- `signer.test.ts` — fails loudly when `MERCHANT_SIGNING_KEY` is missing.
+- `signer.test.ts` — fails loudly when `CARDANO_MERCHANT_SKEY` is missing.
 - `order-events.repo.test.ts` — UNIQUE constraint, RLS read access.
 
 ### Integration / e2e (against dolos)
