@@ -15,17 +15,16 @@ const mockSubmit = vi.fn();
 const mockClientConstructor = vi.fn();
 
 vi.mock('tx3-sdk/trp', () => {
-	// Use a named function so `new Client(opts)` works as a constructor call.
+	// Use a named function so `new TrpClient(opts)` works as a constructor call.
 	// The constructor spy records call args; the returned instance delegates to
 	// the shared mock fns.
-	function Client(options: unknown) {
+	function TrpClient(options: unknown) {
 		mockClientConstructor(options);
 		return { resolve: mockResolve, submit: mockSubmit };
 	}
 
 	return {
-		Client,
-		TRPClient: Client,
+		TrpClient,
 	};
 });
 
@@ -40,12 +39,12 @@ const STUB_CONFIG = {
 };
 
 const FAKE_PROTO_TX = {
-	tir: { version: '1', content: 'abc', encoding: 'base64' },
+	tir: { version: '1', content: 'abc', encoding: 'base64' as const },
 	args: {},
 };
 
 const FAKE_SUBMIT_PARAMS = {
-	tx: { content: 'deadbeef', encoding: 'hex' as const },
+	tx: { content: 'deadbeef', contentType: 'hex' as const },
 	witnesses: [],
 };
 

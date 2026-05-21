@@ -8,32 +8,20 @@
  * All errors thrown by the underlying Client are caught and re-thrown as a
  * typed ChainUnavailable error so callers have a single error type to handle.
  *
- * SDK version note (2026-05-21):
- *   Currently built against tx3-sdk@0.7.0, which exposes only:
- *     - Client.resolve(ProtoTxRequest): Promise<ResolveResponse>
- *     - Client.submit(SubmitParams): Promise<void>   (returns void; tx hash not surfaced)
- *
- *   The newer SDK at /sdks/web-sdk (not yet published as 0.7.0 successor) exposes:
- *     - TrpClient.submit(...): Promise<SubmitResponse>  (response includes hash)
- *     - TrpClient.checkStatus(hashes): Promise<CheckStatusResponse>
- *     - Higher-level facade: tx3.tx("...").arg(...).resolve().sign().submit().waitForConfirmed(PollConfig)
- *
- *   When the package is upgraded to a version that includes these:
- *     1. Add `checkStatus(hashes: string[]): Promise<CheckStatusResponse>` to U5cClient.
- *     2. Change submit() return type to Promise<SubmitResponse> so callers can capture the tx hash.
- *     3. Adopt the facade in the traceability orchestrator (Task A7+) so `waitForConfirmed`
- *        replaces the manual hash extraction + status polling currently required by 0.7.0.
- *     4. Update the relevant tasks in docs/superpowers/plans/2026-05-21-milestone-3-traceability.md
- *        if the orchestrator's call shape changes.
+ * Built against tx3-sdk@0.11.0:
+ *   - TrpClient.resolve(ResolveParams): Promise<TxEnvelope>
+ *   - TrpClient.submit(SubmitParams): Promise<SubmitResponse>
+ *   - TrpClient.checkStatus(hashes): Promise<CheckStatusResponse>
+ *   - BytesEnvelope now uses `contentType: "hex"` instead of `encoding: "hex"`.
  */
 
-import type { ProtoTxRequest, ResolveResponse, SubmitParams } from 'tx3-sdk/trp';
-import { Client } from 'tx3-sdk/trp';
+import type { ResolveParams, SubmitParams, SubmitResponse, TxEnvelope } from 'tx3-sdk/trp';
+import { TrpClient } from 'tx3-sdk/trp';
 import type { NetworkConfig } from './network.js';
 import { getNetworkConfig } from './network.js';
 
 // Re-export SDK types so callers can reference them without importing tx3-sdk directly
-export type { ProtoTxRequest, ResolveResponse, SubmitParams };
+export type { ResolveParams, SubmitParams, SubmitResponse, TxEnvelope };
 
 /**
  * Typed error that wraps any network / transport failure from the TRP Client.
@@ -56,39 +44,39 @@ export class ChainUnavailable extends Error {
 export interface U5cClient {
 	/**
 	 * Resolve a proto-transaction to a concrete signed transaction envelope.
-	 * Forwards directly to TRP Client.resolve().
+	 * Forwards directly to TrpClient.resolve().
 	 */
-	resolve(protoTx: ProtoTxRequest): Promise<ResolveResponse>;
+	resolve(params: ResolveParams): Promise<TxEnvelope>;
 
 	/**
 	 * Submit a signed transaction to the network.
-	 * Forwards directly to TRP Client.submit().
+	 * Forwards directly to TrpClient.submit().
 	 */
-	submit(params: SubmitParams): Promise<void>;
+	submit(params: SubmitParams): Promise<SubmitResponse>;
 }
 
 /**
- * Factory that creates a U5cClient backed by the real TRP Client.
+ * Factory that creates a U5cClient backed by the real TrpClient.
  *
  * @param config - Optional network config override (useful for tests). When
  *   omitted, the config is read from environment variables via getNetworkConfig().
  */
 export function createU5cClient(config?: NetworkConfig): U5cClient {
 	const { trpEndpoint } = config ?? getNetworkConfig();
-	const inner = new Client({ endpoint: trpEndpoint });
+	const inner = new TrpClient({ endpoint: trpEndpoint });
 
 	return {
-		async resolve(protoTx: ProtoTxRequest): Promise<ResolveResponse> {
+		async resolve(params: ResolveParams): Promise<TxEnvelope> {
 			try {
-				return await inner.resolve(protoTx);
+				return await inner.resolve(params);
 			} catch (err) {
 				throw new ChainUnavailable(`TRP resolve failed: ${err instanceof Error ? err.message : String(err)}`, err);
 			}
 		},
 
-		async submit(params: SubmitParams): Promise<void> {
+		async submit(params: SubmitParams): Promise<SubmitResponse> {
 			try {
-				await inner.submit(params);
+				return await inner.submit(params);
 			} catch (err) {
 				throw new ChainUnavailable(`TRP submit failed: ${err instanceof Error ? err.message : String(err)}`, err);
 			}

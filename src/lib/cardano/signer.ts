@@ -4,14 +4,9 @@
  * Single source of truth for the backend Ed25519 signing key. Reads
  * CARDANO_MERCHANT_SKEY (hex-encoded Ed25519 private key) from env once,
  * derives the public key, and exposes a sign() method that produces
- * SubmitWitness[] shaped for tx3-sdk/trp v0.7.0.
+ * TxWitness[] shaped for tx3-sdk/trp v0.11.0.
  *
- * The returned Signer interface is inspired by the newer SDK's Ed25519Signer
- * shape, but the interfaces have diverged. Migrating to the newer SDK will
- * require making sign() async, returning a single TxWitness (not an array),
- * renaming the witness field `encoding` to `contentType`, and replacing
- * publicKeyHex() with address(). The renames are mechanical; the async
- * change ripples through every caller.
+ * BytesEnvelope in v0.11.0 uses `contentType: "hex"` instead of `encoding: "hex"`.
  *
  * Required env vars:
  *   CARDANO_MERCHANT_SKEY — 64 hex chars (32 bytes), Ed25519 private key
@@ -19,15 +14,15 @@
 
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { Buffer } from 'buffer';
-import type { SubmitWitness } from 'tx3-sdk/trp';
+import type { TxWitness } from 'tx3-sdk/trp';
 
-// --- Signer interface (mirrors newer SDK shape for mechanical future swap) ---
+// --- Signer interface ---
 
 export interface Signer {
 	/** Returns the derived Ed25519 public key as a lowercase hex string. */
 	publicKeyHex(): string;
-	/** Signs a transaction body hash and returns tx3-sdk/trp SubmitWitness[]. */
-	sign(txHashHex: string): SubmitWitness[];
+	/** Signs a transaction body hash and returns tx3-sdk/trp TxWitness[]. */
+	sign(txHashHex: string): TxWitness[];
 }
 
 // --- Module-level memoised singleton ---
@@ -62,7 +57,7 @@ export function getMerchantSigner(): Signer {
 			return cachedPublicKeyHex;
 		},
 
-		sign(txHashHex: string): SubmitWitness[] {
+		sign(txHashHex: string): TxWitness[] {
 			const txHashBytes = Buffer.from(txHashHex, 'hex');
 			const signature = ed25519.sign(txHashBytes, privateKeyBytes);
 
@@ -71,11 +66,11 @@ export function getMerchantSigner(): Signer {
 					type: 'vkey',
 					key: {
 						content: cachedPublicKeyHex,
-						encoding: 'hex',
+						contentType: 'hex',
 					},
 					signature: {
 						content: Buffer.from(signature).toString('hex'),
-						encoding: 'hex',
+						contentType: 'hex',
 					},
 				},
 			];

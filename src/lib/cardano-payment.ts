@@ -2,7 +2,7 @@ import { Buffer } from 'buffer';
 
 // Lib
 import { decodeHexAddress } from '@/lib/cardano';
-import { protocol } from '@/lib/tx3/protocol';
+import { Client as Tx3Client } from '@/lib/tx3/protocol';
 import { submitPaymentServerFn } from '@/server-fns/payments';
 
 export interface PaymentResult {
@@ -47,6 +47,12 @@ export interface MultiCurrencyPaymentResult {
 // Merchant address - this should be configurable via environment variables
 const MERCHANT_ADDRESS = import.meta.env.VITE_MERCHANT_ADDRESS || '';
 
+// TRP endpoint from env
+const TRP_ENDPOINT = import.meta.env.VITE_TRP_ENDPOINT || 'https://cardano-preview.trp-m1.demeter.run';
+
+// Shared protocol client instance
+const protocolClient = new Tx3Client({ endpoint: TRP_ENDPOINT });
+
 // Timeout configuration
 // const CARDANO_PAYMENT_TIMEOUT = 60000; // 60 seconds = 3 Cardano blocks
 
@@ -63,14 +69,18 @@ export async function processCardanoPayment(wallet: CardanoWalletAPI, order: Ord
 		};
 
 		const transactionInfo = isAdaPayment
-			? await protocol.payWithAdaTx(commonProps)
-			: await protocol.payWithTokensTx({
+			? await protocolClient.payWithAda({
 					...commonProps,
+					quantity: commonProps.quantity,
+				} as Parameters<typeof protocolClient.payWithAda>[0])
+			: await protocolClient.payWithTokens({
+					...commonProps,
+					quantity: commonProps.quantity,
 					// biome-ignore lint/style/noNonNullAssertion: Because we check isAdaPayment
 					assetName: Buffer.from(order.assetName!, 'hex'),
 					// biome-ignore lint/style/noNonNullAssertion: Because we check isAdaPayment
 					tokenPolicy: Buffer.from(order.policyId!, 'hex'),
-				});
+				} as Parameters<typeof protocolClient.payWithTokens>[0]);
 
 		const userWitnessSet = await wallet.signTx(transactionInfo.tx, true);
 

@@ -1,12 +1,13 @@
 import { createServerFn } from '@tanstack/react-start';
 import { Buffer } from 'buffer';
-import type { SubmitWitness } from 'tx3-sdk/trp';
+import type { TxWitness } from 'tx3-sdk/trp';
+import { TrpClient } from 'tx3-sdk/trp';
 import { z } from 'zod';
 
 // Lib
+import { getNetworkConfig } from '@/lib/cardano/network';
 import { getMerchantSigner } from '@/lib/cardano/signer';
 import { decodeWitnessSetVkeys } from '@/lib/cbor-witness';
-import { protocol } from '@/lib/tx3/protocol';
 
 const submitPaymentSchema = z.object({
 	tx_cbor_hex: z.string().min(1, 'Transaction CBOR is required'),
@@ -22,17 +23,17 @@ function bytesToHex(bytes: Uint8Array): string {
 	return Buffer.from(bytes).toString('hex');
 }
 
-function witnessesFromWitnessSetCbor(witnessSetCborHex: string): SubmitWitness[] {
+function witnessesFromWitnessSetCbor(witnessSetCborHex: string): TxWitness[] {
 	const vkeyWitnesses = decodeWitnessSetVkeys(hexToBytes(witnessSetCborHex));
 	return vkeyWitnesses.map(witness => ({
 		type: 'vkey',
 		key: {
 			content: bytesToHex(witness.vkey),
-			encoding: 'hex',
+			contentType: 'hex',
 		},
 		signature: {
 			content: bytesToHex(witness.signature),
-			encoding: 'hex',
+			contentType: 'hex',
 		},
 	}));
 }
@@ -46,10 +47,12 @@ export const submitPaymentServerFn = createServerFn({ method: 'POST' })
 			const merchantWitnesses = getMerchantSigner().sign(tx_hash_hex);
 			const walletWitnesses = witnessesFromWitnessSetCbor(witness_set_cbor_hex);
 
-			await protocol.submit({
+			const { trpEndpoint } = getNetworkConfig();
+			const trpClient = new TrpClient({ endpoint: trpEndpoint });
+			await trpClient.submit({
 				tx: {
 					content: tx_cbor_hex,
-					encoding: 'hex',
+					contentType: 'hex',
 				},
 				witnesses: [...merchantWitnesses, ...walletWitnesses],
 			});

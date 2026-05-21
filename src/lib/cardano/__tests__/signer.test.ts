@@ -22,7 +22,7 @@ afterEach(() => {
 
 describe('getMerchantSigner', () => {
 	describe('sign()', () => {
-		it('returns an array with one SubmitWitness of type "vkey"', async () => {
+		it('returns an array with one TxWitness of type "vkey"', async () => {
 			const { getMerchantSigner } = await loadFresh();
 			const txHashHex = 'a'.repeat(64); // 32-byte hash
 			const witnesses = getMerchantSigner().sign(txHashHex);
@@ -30,16 +30,16 @@ describe('getMerchantSigner', () => {
 			expect(witnesses[0].type).toBe('vkey');
 		});
 
-		it('witness key has encoding "hex"', async () => {
+		it('witness key has contentType "hex"', async () => {
 			const { getMerchantSigner } = await loadFresh();
 			const witnesses = getMerchantSigner().sign('b'.repeat(64));
-			expect(witnesses[0].key.encoding).toBe('hex');
+			expect(witnesses[0].key.contentType).toBe('hex');
 		});
 
-		it('witness signature has encoding "hex"', async () => {
+		it('witness signature has contentType "hex"', async () => {
 			const { getMerchantSigner } = await loadFresh();
 			const witnesses = getMerchantSigner().sign('c'.repeat(64));
-			expect(witnesses[0].signature.encoding).toBe('hex');
+			expect(witnesses[0].signature.contentType).toBe('hex');
 		});
 
 		it('produces a signature verifiable against the derived public key', async () => {

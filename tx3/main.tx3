@@ -2,7 +2,6 @@ party Buyer;
 
 party Merchant;
 
-
 tx pay_with_ada(
     quantity: Int
 ) {
@@ -48,6 +47,28 @@ tx pay_with_tokens(
     output {
         to: Buyer,
         amount: source - tokens - fees - min_utxo(payment),
+    }
+
+    signers {
+        Merchant,
+    }
+}
+
+tx record_order_event(
+    metadata_payload: Bytes,
+) {
+    input source {
+        from: Merchant,
+        min_amount: Ada(2000000) + fees,
+    }
+
+    output {
+        to: Merchant,
+        amount: Ada(2000000),
+    }
+
+    metadata {
+        1337: metadata_payload,
     }
 
     signers {
