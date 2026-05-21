@@ -110,6 +110,12 @@ describe('getMerchantSigner', () => {
 			expect(() => getMerchantSigner()).toThrow('INVALID_ENV: CARDANO_MERCHANT_SKEY must be 64 hex chars');
 		});
 
+		it('throws INVALID_ENV error when CARDANO_MERCHANT_SKEY has wrong length (65 chars)', async () => {
+			process.env.CARDANO_MERCHANT_SKEY = 'a'.repeat(65);
+			const { getMerchantSigner } = await loadFresh();
+			expect(() => getMerchantSigner()).toThrow('INVALID_ENV: CARDANO_MERCHANT_SKEY must be 64 hex chars');
+		});
+
 		it('throws INVALID_ENV error when CARDANO_MERCHANT_SKEY contains non-hex chars', async () => {
 			process.env.CARDANO_MERCHANT_SKEY = 'z'.repeat(64);
 			const { getMerchantSigner } = await loadFresh();

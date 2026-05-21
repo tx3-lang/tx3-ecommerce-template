@@ -6,8 +6,12 @@
  * derives the public key, and exposes a sign() method that produces
  * SubmitWitness[] shaped for tx3-sdk/trp v0.7.0.
  *
- * The returned Signer interface mirrors the shape exposed by the newer
- * SDK (Ed25519Signer / CardanoSigner), so the future swap is mechanical.
+ * The returned Signer interface is inspired by the newer SDK's Ed25519Signer
+ * shape, but the interfaces have diverged. Migrating to the newer SDK will
+ * require making sign() async, returning a single TxWitness (not an array),
+ * renaming the witness field `encoding` to `contentType`, and replacing
+ * publicKeyHex() with address(). The renames are mechanical; the async
+ * change ripples through every caller.
  *
  * Required env vars:
  *   CARDANO_MERCHANT_SKEY — 64 hex chars (32 bytes), Ed25519 private key
