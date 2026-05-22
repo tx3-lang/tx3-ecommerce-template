@@ -85,18 +85,21 @@ fn check_mark_shipped(
       grace_period_end: Some(shipped_at + grace_period_constant),
     }
 
-  // 6. Exactly one output re-locks at the same address with the same value and the correct datum
-  let valid_output =
-    ctx.outputs
-      |> list.any(
-          fn(output) {
-            output.address == script_address && output.value == locked_value && output.datum == InlineDatum(
-              expected_datum,
-            )
-          },
-        )
+  // 6. shipped_at must be before the ship_deadline
+  let before_deadline = shipped_at < datum.ship_deadline
 
-  is_pending && merchant_signed && time_valid && valid_output
+  // 7. Exactly one output re-locks at the same address with the same value and the correct datum
+  let script_outputs =
+    list.filter(ctx.outputs, fn(o) { o.address == script_address })
+
+  let valid_output =
+    when script_outputs is {
+      [o] ->
+        o.value == locked_value && o.datum == InlineDatum(expected_datum)
+      _ -> False
+    }
+
+  is_pending && merchant_signed && time_valid && before_deadline && valid_output
 }
 
 // ---------------------------------------------------------------------------
@@ -288,4 +291,29 @@ test mark_shipped_already_shipped() {
     }
 
   !check_mark_shipped(already_shipped, shipped_at_ms, own_output_ref(), tx)
+}
+
+/// mark_shipped_after_deadline: shipped_at >= ship_deadline → invalid.
+test mark_shipped_after_deadline() {
+  // shipped_at equals ship_deadline — merchant can no longer mark shipped
+  let late_shipped_at = ship_deadline_ms
+  let late_validity_from = ship_deadline_ms - 1_000_000
+  let late_validity_to = ship_deadline_ms + 1_000_000
+  let late_out_datum =
+    EscrowDatum {
+      ..pending_datum(),
+      grace_period_end: Some(late_shipped_at + grace_period_constant),
+    }
+  let input = make_script_input(pending_datum())
+  let output = make_expected_output(late_out_datum)
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [input],
+      outputs: [output],
+      extra_signatories: [merchant_vkh],
+      validity_range: make_validity_range(late_validity_from, late_validity_to),
+    }
+
+  !check_mark_shipped(pending_datum(), late_shipped_at, own_output_ref(), tx)
 }
