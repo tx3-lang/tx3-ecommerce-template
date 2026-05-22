@@ -377,9 +377,8 @@ async function run() {
 			`[reconcile-escrow] Reconciled ${result.pendingToShipped + result.shippedToReleased + result.pendingToRefunded} rows. Transitions: ${result.pendingToShipped} pending→shipped, ${result.shippedToReleased} shipped→released, ${result.pendingToRefunded} pending→refunded. Skipped: ${result.skipped}. Errors: ${result.errors}.`,
 		);
 
-		if (result.errors > 0) {
-			process.exit(1);
-		}
+		// Per-row errors are reported in the summary but do not fail the process —
+		// the script exits 0 so cron/CI does not mask real fatal errors.
 	} catch (err) {
 		// biome-ignore lint/suspicious/noConsole: intentional CLI stderr
 		console.error('[reconcile-escrow] ERROR:', err instanceof Error ? err.message : String(err));
