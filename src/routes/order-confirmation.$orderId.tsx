@@ -1,7 +1,9 @@
 import { IconCheck, IconClock, IconPackage, IconWallet } from '@tabler/icons-react';
 import { createFileRoute } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
 
 // Components
+import { BadgeList } from '@/components/badges/BadgeList';
 import { EscrowStatusCard } from '@/components/order/EscrowStatusCard';
 import { OrderTraceTimeline } from '@/components/order/OrderTraceTimeline';
 import { Button } from '@/components/ui/button';
@@ -17,6 +19,9 @@ import { useWallet } from '@/hooks/use-wallet';
 // Lib
 import { formatPriceSyncById } from '@/lib/unified-formatter';
 
+// Server-fns
+import { listBadgesByOrder } from '@/server-fns/issued-badges';
+
 export const Route = createFileRoute('/order-confirmation/$orderId')({
 	component: OrderConfirmation,
 });
@@ -29,6 +34,13 @@ function OrderConfirmation() {
 	const enableShipping = brandConfig.features.enableShipping;
 	const hasProductsPage = !brandConfig.features.disableProductsPage;
 	const productsPath = hasProductsPage ? '/products' : '/';
+	const [badges, setBadges] = useState<Database.IssuedBadge[]>([]);
+
+	useEffect(() => {
+		listBadgesByOrder(orderId)
+			.then(setBadges)
+			.catch(() => setBadges([]));
+	}, [orderId]);
 
 	if (!isWalletReady) {
 		return (
@@ -263,6 +275,14 @@ function OrderConfirmation() {
 					<div className="mt-6 bg-white rounded-lg shadow-sm p-6">
 						<h2 className="text-lg font-semibold mb-4">On-chain Activity</h2>
 						<OrderTraceTimeline events={order.events} />
+					</div>
+				)}
+
+				{/* Badges Issued */}
+				{badges.length > 0 && (
+					<div className="mt-6 bg-white rounded-lg shadow-sm p-6">
+						<h2 className="text-lg font-semibold mb-4">Badges Issued</h2>
+						<BadgeList badges={badges} networkProfile={import.meta.env.VITE_TX3_PROFILE ?? 'local'} />
 					</div>
 				)}
 
