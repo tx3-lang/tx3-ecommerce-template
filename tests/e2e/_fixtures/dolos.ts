@@ -18,6 +18,8 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { main as markShipped } from '../../../scripts/escrow-mark-shipped.js';
+import { main as releaseEscrow } from '../../../scripts/escrow-release.js';
 
 // ---------------------------------------------------------------------------
 // Environment check
@@ -193,13 +195,15 @@ export async function getOrderEvents(orderId: string): Promise<Database.OrderEve
 }
 
 /**
- * Deletes all test data for an order (order_events, escrows, orders) by order id.
+ * Deletes all test data for an order (issued_badges, order_events, escrows, orders) by order id.
  * Call in afterEach / afterAll to clean up between test runs.
  */
 export async function cleanupOrder(orderId: string): Promise<void> {
 	const supabase = getE2eSupabase();
 
-	// Delete in dependency order — order_events and escrows reference orders
+	// Delete in dependency order — issued_badges does not reference orders
+	// via FK but we clean it up here for badge e2e tests.
+	await supabase.from('issued_badges').delete().eq('triggering_order_id', orderId);
 	await supabase.from('order_events').delete().eq('order_id', orderId);
 	await supabase.from('escrows').delete().eq('order_id', orderId);
 	await supabase.from('orders').delete().eq('id', orderId);
@@ -289,4 +293,71 @@ export async function insertLockPaymentFixture(input: LockPaymentFixtureInput): 
 	if (eventError) {
 		throw new Error(`E2E: failed to insert paid event fixture — ${eventError.message}`);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Badge helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns all issued_badges rows that were triggered by the given order.
+ */
+export async function getIssuedBadges(orderId: string): Promise<Database.IssuedBadge[]> {
+	const supabase = getE2eSupabase();
+
+	const { data, error } = await supabase
+		.from('issued_badges')
+		.select('*')
+		.eq('triggering_order_id', orderId);
+
+	if (error) {
+		throw new Error(`E2E: failed to fetch issued_badges for order ${orderId} — ${error.message}`);
+	}
+
+	return (data ?? []) as Database.IssuedBadge[];
+}
+
+/**
+ * Completes the full escrow lifecycle for a test order:
+ *   lock payment fixture → mark-shipped → advance(61) → release
+ *
+ * Returns the orderId (same as input) so callers can chain assertions.
+ */
+export async function setupEscrowLifecycle(orderId: string): Promise<string> {
+	const lockTxHash =
+		process.env.E2E_LOCK_TX_HASH ??
+		'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+	await insertLockPaymentFixture({
+		orderId,
+		lockTxHash,
+		lockOutputIndex: 0,
+	});
+
+	const shippedResult = await markShipped([`--order-id`, orderId]);
+	if (!shippedResult.txHash) throw new Error('E2E: mark-shipped returned empty txHash');
+
+	await advanceTime(61);
+
+	const releaseResult = await releaseEscrow([`--order-id`, orderId]);
+	if (!releaseResult.txHash) throw new Error('E2E: release returned empty txHash');
+
+	return orderId;
+}
+
+/**
+ * Returns the recipient pkh that a given badge kind would be issued to,
+ * by reading the escrow row from DB.
+ *
+ * Uses MERCHANT_ADDRESS for recipient_role='merchant' kind badges (seller-first-delivery).
+ */
+export async function getExpectedRecipientPkh(
+	orderId: string,
+	kind: Database.BadgeKind,
+): Promise<string> {
+	const escrow = await getEscrowRow(orderId);
+	if (!escrow) throw new Error(`E2E: no escrow for order ${orderId}`);
+
+	if (kind === 'buyer_first_purchase') return escrow.buyer_pkh;
+	return escrow.merchant_pkh;
 }
