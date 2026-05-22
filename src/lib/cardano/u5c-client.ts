@@ -68,8 +68,11 @@ export interface U5cClient {
  *   omitted, the config is read from environment variables via getNetworkConfig().
  */
 export function createU5cClient(config?: NetworkConfig): U5cClient {
-	const { trpEndpoint } = config ?? getNetworkConfig();
-	const inner = new TrpClient({ endpoint: trpEndpoint });
+	const { trpEndpoint, trpApiKey } = config ?? getNetworkConfig();
+	const clientOptions = trpApiKey
+		? { endpoint: trpEndpoint, headers: { 'dmtr-api-key': trpApiKey } }
+		: { endpoint: trpEndpoint };
+	const inner = new TrpClient(clientOptions);
 
 	return {
 		async resolve(params: ResolveParams): Promise<TxEnvelope> {

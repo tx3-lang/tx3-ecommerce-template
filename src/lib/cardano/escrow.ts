@@ -197,7 +197,7 @@ export async function submitLockEscrow(
 	value: EscrowValue,
 	buyerSigner: CardanoWalletAPI,
 ): Promise<LockResult> {
-	const { trpEndpoint, profile, merchantAddress } = getNetworkConfig();
+	const { trpEndpoint, trpApiKey, profile, merchantAddress } = getNetworkConfig();
 	const shipDeadlineSeconds = getShipDeadlineSeconds();
 
 	// Build timestamps
@@ -215,7 +215,10 @@ export async function submitLockEscrow(
 	const datumCbor = buildDatumCbor(buyerPkh, merchantPkh, orderId, paidAt, shipDeadline);
 
 	// Construct the protocol client
-	const client = new Client({ endpoint: trpEndpoint }, profile as ProfileName);
+	const clientOptions = trpApiKey
+		? { endpoint: trpEndpoint, headers: { 'dmtr-api-key': trpApiKey } }
+		: { endpoint: trpEndpoint };
+	const client = new Client(clientOptions, profile as ProfileName);
 
 	// Resolve the appropriate lock tx based on value shape
 	let envelope: TxEnvelope;
@@ -312,9 +315,12 @@ function buildShippedDatumCbor(
 async function resolveSignAndSubmitWithBackendSigner(
 	buildTx: (client: Client) => Promise<TxEnvelope>,
 ): Promise<TxEnvelope> {
-	const { trpEndpoint, profile } = getNetworkConfig();
+	const { trpEndpoint, trpApiKey, profile } = getNetworkConfig();
 
-	const client = new Client({ endpoint: trpEndpoint }, profile as ProfileName);
+	const clientOptions = trpApiKey
+		? { endpoint: trpEndpoint, headers: { 'dmtr-api-key': trpApiKey } }
+		: { endpoint: trpEndpoint };
+	const client = new Client(clientOptions, profile as ProfileName);
 
 	const envelope = await buildTx(client);
 
@@ -424,8 +430,11 @@ export async function submitRefundEscrow(orderId: string, buyerSigner: BuyerSign
 		throw new Error(`ESCROW_NOT_FOUND: order_id=${orderId}`);
 	}
 
-	const { trpEndpoint, profile } = getNetworkConfig();
-	const client = new Client({ endpoint: trpEndpoint }, profile as ProfileName);
+	const { trpEndpoint, trpApiKey, profile } = getNetworkConfig();
+	const clientOptions = trpApiKey
+		? { endpoint: trpEndpoint, headers: { 'dmtr-api-key': trpApiKey } }
+		: { endpoint: trpEndpoint };
+	const client = new Client(clientOptions, profile as ProfileName);
 
 	const escrowUtxo = { txHash: escrow.utxo_tx_hash, outputIndex: escrow.utxo_output_index };
 

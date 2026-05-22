@@ -12,6 +12,7 @@
  *   MERCHANT_ADDRESS  — bech32 address of the backend signer
  *
  * Optional env vars:
+ *   TX3_TRP_API_KEY   — dmtr-api-key header value (required for preview)
  *   METADATA_LABEL    — numeric label for order-event metadata (default: 1337)
  */
 
@@ -19,6 +20,7 @@ export type NetworkProfile = 'local' | 'preview';
 
 export interface NetworkConfig {
 	trpEndpoint: string;
+	trpApiKey?: string;
 	profile: NetworkProfile;
 	metadataLabel: number;
 	merchantAddress: string;
@@ -58,8 +60,11 @@ export function getNetworkConfig(): NetworkConfig {
 		metadataLabel = DEFAULT_METADATA_LABEL;
 	}
 
+	const trpApiKey = process.env.TX3_TRP_API_KEY || undefined;
+
 	_config = {
 		trpEndpoint,
+		trpApiKey,
 		profile: profileRaw as NetworkProfile,
 		metadataLabel,
 		merchantAddress,

@@ -48,7 +48,7 @@ export async function submitMintBadge(
 	recipientAddress: string,
 	orderId: string,
 ): Promise<MintBadgeResult> {
-	const { trpEndpoint, profile, merchantAddress } = getNetworkConfig();
+	const { trpEndpoint, trpApiKey, profile, merchantAddress } = getNetworkConfig();
 
 	const entry = getCatalogEntry(kind);
 
@@ -78,7 +78,10 @@ export async function submitMintBadge(
 
 	const metadataHex = Buffer.from(JSON.stringify(metadata), 'utf8').toString('hex');
 
-	const client = new Client({ endpoint: trpEndpoint }, profile as ProfileName);
+	const client = new Client(
+		{ endpoint: trpEndpoint, ...(trpApiKey ? { headers: { 'dmtr-api-key': trpApiKey } } : {}) },
+		profile as ProfileName,
+	);
 
 	const envelope: TxEnvelope = await client.mintBadge({
 		appliedScriptCbor,

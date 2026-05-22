@@ -84,13 +84,16 @@ type TracePayload = PaidPayload | ShippedPayload | CompletedPayload | CancelledP
  * 6. Return { txHash, confirmed: false } — reconciliation is handled by A12.
  */
 async function submitEvent(payload: TracePayload): Promise<TraceResult> {
-	const { trpEndpoint, profile, merchantAddress } = getNetworkConfig();
+	const { trpEndpoint, trpApiKey, profile, merchantAddress } = getNetworkConfig();
 
 	// Hex-encode the UTF-8 JSON payload (tx3 Bytes args expect a hex string)
 	const metadataPayload = Buffer.from(JSON.stringify(payload), 'utf8').toString('hex');
 
 	// Construct the protocol client with the active profile
-	const client = new Client({ endpoint: trpEndpoint }, profile as ProfileName);
+	const clientOptions = trpApiKey
+		? { endpoint: trpEndpoint, headers: { 'dmtr-api-key': trpApiKey } }
+		: { endpoint: trpEndpoint };
+	const client = new Client(clientOptions, profile as ProfileName);
 
 	// Resolve the record_order_event tx.
 	// PROFILES[profile].parties is {} so merchant is not injected by the profile;
