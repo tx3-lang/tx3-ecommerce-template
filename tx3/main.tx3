@@ -224,6 +224,57 @@ tx refund_escrow(
     }
 }
 
+// Mint a single reputation badge NFT to a recipient with CIP-25 metadata
+tx mint_badge(
+    policy_id: Bytes,
+    asset_name: Bytes,
+    applied_script_cbor: Bytes,
+    recipient_address: Bytes,
+    metadata: Bytes,
+) {
+    locals {
+        badge: AnyAsset(policy_id, asset_name, 1),
+    }
+
+    input source {
+        from: Merchant,
+        min_amount: fees + min_utxo(badge_output),
+    }
+
+    collateral {
+        from: Merchant,
+        min_amount: fees,
+    }
+
+    mint {
+        amount: badge,
+        redeemer: (),
+    }
+
+    output badge_output {
+        to: recipient_address,
+        amount: badge + min_utxo(badge_output),
+    }
+
+    output {
+        to: Merchant,
+        amount: source - fees - min_utxo(badge_output),
+    }
+
+    signers {
+        Merchant,
+    }
+
+    metadata {
+        721: metadata,
+    }
+
+    cardano::plutus_witness {
+        version: 3,
+        script: applied_script_cbor,
+    }
+}
+
 // Record an order lifecycle event on-chain via tx metadata (traceability)
 tx record_order_event(
     metadata_payload: Bytes,
