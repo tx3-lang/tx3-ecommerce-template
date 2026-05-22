@@ -1,5 +1,6 @@
 // Lib
 import { type EscrowValue, submitLockEscrow } from '@/lib/cardano/escrow';
+import { getScriptAddress } from '@/lib/cardano/escrow-policy';
 import { submitPaymentServerFn } from '@/server-fns/payments';
 
 export interface PaymentResult {
@@ -66,53 +67,17 @@ export async function processCardanoPayment(wallet: CardanoWalletAPI, order: Ord
 			};
 		}
 
-		// Submit the lock tx — returns { lockTxHash, lockOutputIndex, datumCbor }
+		// Submit the lock tx — returns { lockTxHash, lockOutputIndex, datumCbor,
+		//   paidAt, shipDeadline, buyerPkh, merchantPkh }
 		const lockResult = await submitLockEscrow(order.id, value, wallet);
 
-		// Derive escrow metadata needed by the server-fn from the network config
-		// The merchant address is read from env by submitLockEscrow's internal
-		// call to getNetworkConfig(). We pass the same env value here for the
-		// server-fn escrow row.
+		// Derive the script address from the compiled Plutus validator (aiken/plutus.json).
+		// This is authoritative — no env var needed.
+		const scriptAddress = getScriptAddress();
 
-		// Get buyer address to derive buyerPkh (same as done inside submitLockEscrow)
-		const { bech32 } = await import('bech32');
-		const { Buffer } = await import('buffer');
-
-		// Compute paidAt / shipDeadline to match what submitLockEscrow computed.
-		// Since they were computed inside submitLockEscrow we re-derive them from
-		// the datumCbor — however the simplest approach is to re-compute here
-		// with the same timestamps.
-		// NOTE: There is a minor window between the client-side computation in
-		// submitLockEscrow and here, but both use Date.now() independently.
-		// The datum CBOR already contains the correct on-chain values; for the DB
-		// row we match them as closely as possible.  A more robust approach is to
-		// return paidAt/shipDeadline from submitLockEscrow — but the spec says
-		// to keep the LockResult shape unchanged.
-		// We compute them using the same policy parameters.
-		const { getShipDeadlineSeconds } = await import('@/lib/cardano/escrow-policy');
-		const { getNetworkConfig } = await import('@/lib/cardano/network');
-
-		const { merchantAddress } = getNetworkConfig();
-		const shipDeadlineSeconds = getShipDeadlineSeconds();
-
-		// Derive buyer PKH from hex-encoded CIP-30 change address
-		const buyerAddressHex = await wallet.getChangeAddress();
-		const buyerRaw = Buffer.from(buyerAddressHex, 'hex');
-		const buyerPkhHex = buyerRaw.slice(1, 29).toString('hex');
-
-		// Derive merchant PKH from bech32 address
-		const decoded = bech32.decode(merchantAddress, 1000);
-		const merchantRaw = Buffer.from(bech32.fromWords(decoded.words));
-		const merchantPkhHex = merchantRaw.slice(1, 29).toString('hex');
-
-		const paidAt = new Date().toISOString();
-		const shipDeadlineMs = Date.now() + shipDeadlineSeconds * 1000;
-		const shipDeadline = new Date(shipDeadlineMs).toISOString();
-
-		// Compute script address from env (same as what tx3 uses internally)
-		// The script address is the destination for the locked funds — we derive
-		// it from the escrow policy hash in network config or fall back to env.
-		const scriptAddress = import.meta.env.VITE_ESCROW_SCRIPT_ADDRESS || '';
+		// Convert epoch-ms timestamps from lockResult to ISO strings for the DB.
+		const paidAt = new Date(lockResult.paidAt).toISOString();
+		const shipDeadline = new Date(lockResult.shipDeadline).toISOString();
 
 		await submitPaymentServerFn({
 			data: {
@@ -121,8 +86,8 @@ export async function processCardanoPayment(wallet: CardanoWalletAPI, order: Ord
 				lockOutputIndex: lockResult.lockOutputIndex,
 				datumCbor: lockResult.datumCbor,
 				scriptAddress,
-				buyerPkh: buyerPkhHex,
-				merchantPkh: merchantPkhHex,
+				buyerPkh: lockResult.buyerPkh,
+				merchantPkh: lockResult.merchantPkh,
 				paidAt,
 				shipDeadline,
 			},

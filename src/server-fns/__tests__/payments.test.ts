@@ -159,18 +159,23 @@ describe('handleLockPayment — happy path', () => {
 		expect(mockEqUpdate).toHaveBeenCalledWith('id', ORDER_ID);
 	});
 
-	it('calls insertOrderEvent with event_type=paid, tx_hash=lockTxHash, and a payload', async () => {
+	it('calls insertOrderEvent with event_type=paid, tx_hash=lockTxHash, confirmed_at=NOW(), and a payload', async () => {
+		const before = new Date().toISOString();
 		await handleLockPayment(SAMPLE_INPUT);
+		const after = new Date().toISOString();
 
 		expect(mockInsertOrderEvent).toHaveBeenCalledOnce();
-		expect(mockInsertOrderEvent).toHaveBeenCalledWith(
-			expect.objectContaining({
-				order_id: ORDER_ID,
-				event_type: 'paid',
-				tx_hash: LOCK_TX_HASH,
-				payload: expect.objectContaining({ event: 'paid' }),
-			}),
-		);
+		const args = mockInsertOrderEvent.mock.calls[0][0] as Record<string, unknown>;
+		expect(args).toMatchObject({
+			order_id: ORDER_ID,
+			event_type: 'paid',
+			tx_hash: LOCK_TX_HASH,
+			payload: expect.objectContaining({ event: 'paid' }),
+		});
+		// confirmed_at must be a valid ISO timestamp near the current time
+		expect(typeof args.confirmed_at).toBe('string');
+		expect((args.confirmed_at as string) >= before).toBe(true);
+		expect((args.confirmed_at as string) <= after).toBe(true);
 	});
 
 	it('returns success: true with the lockTxHash', async () => {

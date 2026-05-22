@@ -20,7 +20,8 @@ function getServerSupabase() {
 	});
 }
 
-type InsertOrderEventData = Pick<Database.OrderEvent, 'order_id' | 'event_type' | 'tx_hash' | 'payload'>;
+type InsertOrderEventData = Pick<Database.OrderEvent, 'order_id' | 'event_type' | 'tx_hash' | 'payload'> &
+	Partial<Pick<Database.OrderEvent, 'confirmed_at'>>;
 
 /**
  * Insert a new order_events row.

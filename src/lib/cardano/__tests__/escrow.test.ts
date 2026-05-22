@@ -362,6 +362,41 @@ describe('submitLockEscrow — ADA value', () => {
 			const noneHex = 'd87980';
 			expect(result.datumCbor).toContain(noneHex);
 		});
+
+		it('returns paidAt as a Unix timestamp in milliseconds (within 2s window)', async () => {
+			const before = Date.now();
+			const result = await submitLockEscrow('order-paid-at', ADA_VALUE, STUB_BUYER_SIGNER);
+			const after = Date.now();
+
+			expect(typeof result.paidAt).toBe('number');
+			expect(result.paidAt).toBeGreaterThanOrEqual(before);
+			expect(result.paidAt).toBeLessThanOrEqual(after);
+		});
+
+		it('returns shipDeadline as paidAt + shipDeadlineSeconds * 1000', async () => {
+			const shipDeadlineSecs = 2592000;
+			mockGetShipDeadlineSeconds.mockReturnValue(shipDeadlineSecs);
+
+			const result = await submitLockEscrow('order-ship-deadline', ADA_VALUE, STUB_BUYER_SIGNER);
+
+			expect(typeof result.shipDeadline).toBe('number');
+			expect(result.shipDeadline - result.paidAt).toBe(shipDeadlineSecs * 1000);
+		});
+
+		it('returns buyerPkh as a hex string matching the CIP-30 change address PKH', async () => {
+			const result = await submitLockEscrow('order-buyer-pkh', ADA_VALUE, STUB_BUYER_SIGNER);
+
+			expect(typeof result.buyerPkh).toBe('string');
+			expect(result.buyerPkh).toBe(STUB_BUYER_PKH_HEX);
+		});
+
+		it('returns merchantPkh as a 56-char hex string', async () => {
+			const result = await submitLockEscrow('order-merchant-pkh', ADA_VALUE, STUB_BUYER_SIGNER);
+
+			expect(typeof result.merchantPkh).toBe('string');
+			// 28 bytes = 56 hex chars
+			expect(result.merchantPkh).toMatch(/^[0-9a-f]{56}$/);
+		});
 	});
 
 	describe('error propagation', () => {
@@ -431,12 +466,19 @@ describe('submitLockEscrow — Token value', () => {
 	});
 
 	describe('return value', () => {
-		it('returns lockTxHash, lockOutputIndex, datumCbor', async () => {
+		it('returns lockTxHash, lockOutputIndex, datumCbor, paidAt, shipDeadline, buyerPkh, merchantPkh', async () => {
+			const before = Date.now();
 			const result = await submitLockEscrow('order-token-return', TOKEN_VALUE, STUB_BUYER_SIGNER);
+			const after = Date.now();
 
 			expect(result.lockTxHash).toBe(STUB_ENVELOPE.hash);
 			expect(typeof result.lockOutputIndex).toBe('number');
 			expect(result.datumCbor).toMatch(/^[0-9a-f]+$/);
+			expect(result.paidAt).toBeGreaterThanOrEqual(before);
+			expect(result.paidAt).toBeLessThanOrEqual(after);
+			expect(result.shipDeadline - result.paidAt).toBe(2592000 * 1000);
+			expect(result.buyerPkh).toBe(STUB_BUYER_PKH_HEX);
+			expect(result.merchantPkh).toMatch(/^[0-9a-f]{56}$/);
 		});
 	});
 

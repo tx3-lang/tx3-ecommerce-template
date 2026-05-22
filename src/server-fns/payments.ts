@@ -110,6 +110,7 @@ export async function handleLockPayment(input: LockPaymentInput): Promise<{ succ
 		order_id: orderId,
 		event_type: 'paid',
 		tx_hash: lockTxHash,
+		confirmed_at: new Date().toISOString(),
 		payload: {
 			v: 1,
 			event: 'paid',

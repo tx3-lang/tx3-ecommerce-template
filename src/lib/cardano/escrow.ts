@@ -61,6 +61,14 @@ export interface LockResult {
 	lockTxHash: string;
 	lockOutputIndex: number;
 	datumCbor: string;
+	/** Unix timestamp (ms) when the escrow was locked — matches the on-chain datum field. */
+	paidAt: number;
+	/** Unix timestamp (ms) of the ship deadline — matches the on-chain datum field. */
+	shipDeadline: number;
+	/** Hex-encoded 28-byte buyer payment key hash. */
+	buyerPkh: string;
+	/** Hex-encoded 28-byte merchant payment key hash. */
+	merchantPkh: string;
 }
 
 /** Return value from submitMarkShipped. */
@@ -238,6 +246,10 @@ export async function submitLockEscrow(
 		lockTxHash: envelope.hash,
 		lockOutputIndex,
 		datumCbor,
+		paidAt,
+		shipDeadline,
+		buyerPkh: buyerPkh.toString('hex'),
+		merchantPkh: merchantPkh.toString('hex'),
 	};
 }
 
