@@ -2,10 +2,12 @@
  * Tests for src/lib/cardano/escrow.ts
  *
  * Mocks at all external boundaries:
- *   - @/lib/tx3/protocol  — codegen Client (lockEscrowAda + lockEscrowTokens + submit)
- *   - tx3-sdk/signer      — decodeWitnessSet
- *   - ../escrow-policy.js — getShipDeadlineSeconds
- *   - ../network.js       — getNetworkConfig
+ *   - @/lib/tx3/protocol        — codegen Client (all methods + submit)
+ *   - tx3-sdk/signer            — decodeWitnessSet
+ *   - ../escrow-policy.js       — getShipDeadlineSeconds, getGracePeriodSeconds
+ *   - ../network.js             — getNetworkConfig
+ *   - ../signer.js              — getMerchantSigner
+ *   - ../../server-fns/escrows  — getEscrowByOrderId
  */
 
 import { decode as cborDecode } from 'cbor-x';
@@ -17,6 +19,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockLockEscrowAda = vi.fn();
 const mockLockEscrowTokens = vi.fn();
+const mockMarkShipped = vi.fn();
+const mockReleaseEscrow = vi.fn();
+const mockRefundEscrow = vi.fn();
 const mockSubmit = vi.fn();
 const mockClientConstructor = vi.fn();
 
@@ -31,6 +36,9 @@ vi.mock('@/lib/tx3/protocol', () => {
 		return {
 			lockEscrowAda: mockLockEscrowAda,
 			lockEscrowTokens: mockLockEscrowTokens,
+			markShipped: mockMarkShipped,
+			releaseEscrow: mockReleaseEscrow,
+			refundEscrow: mockRefundEscrow,
 			submit: mockSubmit,
 		};
 	}
@@ -52,10 +60,61 @@ vi.mock('tx3-sdk/signer', () => ({
 
 const mockGetScriptAddress = vi.fn().mockReturnValue('addr_test1scriptaddr');
 const mockGetShipDeadlineSeconds = vi.fn().mockReturnValue(2592000);
+const mockGetGracePeriodSeconds = vi.fn().mockReturnValue(1209600);
 
 vi.mock('../escrow-policy.js', () => ({
 	getScriptAddress: mockGetScriptAddress,
 	getShipDeadlineSeconds: mockGetShipDeadlineSeconds,
+	getGracePeriodSeconds: mockGetGracePeriodSeconds,
+}));
+
+// ---------------------------------------------------------------------------
+// Mock: signer (backend merchant signer)
+// ---------------------------------------------------------------------------
+
+const STUB_WITNESSES = [
+	{
+		type: 'vkey',
+		key: { content: 'aabbcc', contentType: 'hex' as const },
+		signature: { content: 'ddeeff', contentType: 'hex' as const },
+	},
+];
+
+const mockSign = vi.fn().mockReturnValue(STUB_WITNESSES);
+const mockGetMerchantSigner = vi.fn().mockReturnValue({ sign: mockSign });
+
+vi.mock('../signer.js', () => ({
+	getMerchantSigner: mockGetMerchantSigner,
+}));
+
+// ---------------------------------------------------------------------------
+// Mock: getEscrowByOrderId (server-fns/escrows)
+// ---------------------------------------------------------------------------
+
+const STUB_ESCROW: Database.Escrow = {
+	id: 'escrow-uuid-1',
+	order_id: 'order-test-1',
+	script_address: 'addr_test1scriptaddr',
+	utxo_tx_hash: 'aabbccdd00112233445566778899aabbccddee00112233445566778899aabbcc',
+	utxo_output_index: 0,
+	status: 'pending',
+	buyer_pkh: 'ccddee00112233445566778899aabbccddeeff001122334455667788',
+	merchant_pkh: 'aabbcc001122334455667788990011223344556677889900112233aa',
+	paid_at: '1716000000000',
+	ship_deadline: '1718592000000',
+	grace_period_end: null,
+	datum_cbor: 'd87980',
+	shipped_tx_hash: null,
+	release_tx_hash: null,
+	refund_tx_hash: null,
+	created_at: '2024-01-01T00:00:00Z',
+	updated_at: '2024-01-01T00:00:00Z',
+};
+
+const mockGetEscrowByOrderId = vi.fn().mockResolvedValue(STUB_ESCROW);
+
+vi.mock('@/server-fns/escrows.js', () => ({
+	getEscrowByOrderId: mockGetEscrowByOrderId,
 }));
 
 // ---------------------------------------------------------------------------
@@ -117,7 +176,7 @@ const STUB_SUBMIT_RESPONSE = { hash: 'cafebabe00112233' };
 // Import module under test (after mocks are registered)
 // ---------------------------------------------------------------------------
 
-const { submitLockEscrow } = await import('../escrow.js');
+const { submitLockEscrow, submitMarkShipped, submitReleaseEscrow, submitRefundEscrow } = await import('../escrow.js');
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -128,11 +187,18 @@ beforeEach(() => {
 	mockGetNetworkConfig.mockReturnValue(STUB_CONFIG);
 	mockGetScriptAddress.mockReturnValue('addr_test1scriptaddr');
 	mockGetShipDeadlineSeconds.mockReturnValue(2592000);
+	mockGetGracePeriodSeconds.mockReturnValue(1209600);
 	mockLockEscrowAda.mockResolvedValue(STUB_ENVELOPE);
 	mockLockEscrowTokens.mockResolvedValue(STUB_ENVELOPE);
+	mockMarkShipped.mockResolvedValue(STUB_ENVELOPE);
+	mockReleaseEscrow.mockResolvedValue(STUB_ENVELOPE);
+	mockRefundEscrow.mockResolvedValue(STUB_ENVELOPE);
 	mockSubmit.mockResolvedValue(STUB_SUBMIT_RESPONSE);
 	mockGetChangeAddress.mockResolvedValue(STUB_BUYER_ADDR_HEX);
 	mockSignTx.mockResolvedValue('a0');
+	mockSign.mockReturnValue(STUB_WITNESSES);
+	mockGetMerchantSigner.mockReturnValue({ sign: mockSign });
+	mockGetEscrowByOrderId.mockResolvedValue(STUB_ESCROW);
 });
 
 // ---------------------------------------------------------------------------
@@ -381,6 +447,338 @@ describe('submitLockEscrow — Token value', () => {
 
 			await expect(submitLockEscrow('order-token-err', TOKEN_VALUE, STUB_BUYER_SIGNER)).rejects.toThrow(
 				'ChainUnavailable: tokens resolve failed',
+			);
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// submitMarkShipped
+// ---------------------------------------------------------------------------
+
+describe('submitMarkShipped', () => {
+	describe('escrow lookup', () => {
+		it('calls getEscrowByOrderId with the provided orderId', async () => {
+			await submitMarkShipped('order-ms-1');
+
+			expect(mockGetEscrowByOrderId).toHaveBeenCalledOnce();
+			expect(mockGetEscrowByOrderId).toHaveBeenCalledWith('order-ms-1');
+		});
+
+		it('throws if getEscrowByOrderId returns null', async () => {
+			mockGetEscrowByOrderId.mockResolvedValueOnce(null);
+
+			await expect(submitMarkShipped('order-ms-missing')).rejects.toThrow();
+		});
+	});
+
+	describe('protocol call arguments', () => {
+		it('calls client.markShipped (not other tx methods)', async () => {
+			await submitMarkShipped('order-ms-2');
+
+			expect(mockMarkShipped).toHaveBeenCalledOnce();
+			expect(mockLockEscrowAda).not.toHaveBeenCalled();
+			expect(mockReleaseEscrow).not.toHaveBeenCalled();
+			expect(mockRefundEscrow).not.toHaveBeenCalled();
+		});
+
+		it('passes escrowUtxo with the utxo_tx_hash and utxo_output_index from the escrow row', async () => {
+			await submitMarkShipped('order-ms-3');
+
+			const args = mockMarkShipped.mock.calls[0][0] as Record<string, unknown>;
+			expect(args.escrowUtxo).toMatchObject({
+				txHash: STUB_ESCROW.utxo_tx_hash,
+				outputIndex: STUB_ESCROW.utxo_output_index,
+			});
+		});
+
+		it('passes shippedAt as current Unix timestamp in milliseconds (within 2s window)', async () => {
+			const before = Date.now();
+			await submitMarkShipped('order-ms-ts');
+			const after = Date.now();
+
+			const args = mockMarkShipped.mock.calls[0][0] as Record<string, unknown>;
+			expect(typeof args.shippedAt).toBe('number');
+			expect(args.shippedAt as number).toBeGreaterThanOrEqual(before);
+			expect(args.shippedAt as number).toBeLessThanOrEqual(after);
+		});
+
+		it('passes gracePeriodEnd as shippedAt + gracePeriodSeconds * 1000', async () => {
+			const gracePeriodSecs = 1209600;
+			mockGetGracePeriodSeconds.mockReturnValue(gracePeriodSecs);
+
+			const before = Date.now();
+			await submitMarkShipped('order-ms-grace');
+			const after = Date.now();
+
+			const args = mockMarkShipped.mock.calls[0][0] as Record<string, unknown>;
+			const shippedAt = args.shippedAt as number;
+			const gracePeriodEnd = args.gracePeriodEnd as number;
+
+			expect(gracePeriodEnd).toBeGreaterThanOrEqual(before + gracePeriodSecs * 1000);
+			expect(gracePeriodEnd).toBeLessThanOrEqual(after + gracePeriodSecs * 1000);
+			expect(gracePeriodEnd - shippedAt).toBe(gracePeriodSecs * 1000);
+		});
+	});
+
+	describe('signing — backend signer', () => {
+		it('signs with the merchant backend signer (not the buyer CIP-30 signer)', async () => {
+			await submitMarkShipped('order-ms-sign');
+
+			expect(mockGetMerchantSigner).toHaveBeenCalled();
+			expect(mockSign).toHaveBeenCalledOnce();
+			expect(mockSign).toHaveBeenCalledWith(STUB_ENVELOPE.hash);
+			// Buyer wallet signTx must NOT be called
+			expect(mockSignTx).not.toHaveBeenCalled();
+		});
+
+		it('submits with the witnesses from the merchant signer', async () => {
+			await submitMarkShipped('order-ms-witnesses');
+
+			const submitArgs = mockSubmit.mock.calls[0][0] as {
+				tx: { content: string; contentType: string };
+				witnesses: unknown[];
+			};
+			expect(submitArgs.witnesses).toEqual(STUB_WITNESSES);
+		});
+	});
+
+	describe('submit', () => {
+		it('calls client.submit with the envelope tx content', async () => {
+			await submitMarkShipped('order-ms-submit');
+
+			expect(mockSubmit).toHaveBeenCalledOnce();
+			const submitArgs = mockSubmit.mock.calls[0][0] as {
+				tx: { content: string; contentType: string };
+			};
+			expect(submitArgs.tx).toEqual({ content: STUB_ENVELOPE.tx, contentType: 'hex' });
+		});
+	});
+
+	describe('return value', () => {
+		it('returns txHash equal to the envelope hash', async () => {
+			const result = await submitMarkShipped('order-ms-return');
+
+			expect(result.txHash).toBe(STUB_ENVELOPE.hash);
+		});
+
+		it('returns newUtxoRef with the submitted txHash at outputIndex 0', async () => {
+			const result = await submitMarkShipped('order-ms-utxo');
+
+			expect(result.newUtxoRef).toMatchObject({
+				txHash: STUB_ENVELOPE.hash,
+				outputIndex: 0,
+			});
+		});
+
+		it('returns newDatumCbor as a non-empty hex string', async () => {
+			const result = await submitMarkShipped('order-ms-datum');
+
+			expect(typeof result.newDatumCbor).toBe('string');
+			expect(result.newDatumCbor.length).toBeGreaterThan(0);
+			expect(result.newDatumCbor).toMatch(/^[0-9a-f]+$/);
+		});
+
+		it('returns newDatumCbor encoding gracePeriodEnd as Some(ms) in field index 5', async () => {
+			const gracePeriodSecs = 1209600;
+			mockGetGracePeriodSeconds.mockReturnValue(gracePeriodSecs);
+
+			const before = Date.now();
+			const result = await submitMarkShipped('order-ms-datum-grace');
+			const after = Date.now();
+
+			const decoded = cborDecode(Buffer.from(result.newDatumCbor, 'hex')) as {
+				tag: number;
+				value: unknown[];
+			};
+			// Top-level must be tag 121 (Plutus CONSTR 0)
+			expect(decoded.tag).toBe(121);
+			// 6 fields
+			expect((decoded.value as unknown[]).length).toBe(6);
+
+			// grace_period_end (last field) must be OptionInt::Some = CONSTR 122 wrapping the ms value
+			const gracePeriodEnd = (decoded.value as { tag: number; value: unknown[] }[])[5];
+			expect(gracePeriodEnd.tag).toBe(122);
+			expect(Array.isArray(gracePeriodEnd.value)).toBe(true);
+			expect((gracePeriodEnd.value as unknown[]).length).toBe(1);
+
+			const gracePeriodEndMs = (gracePeriodEnd.value as number[])[0];
+			expect(gracePeriodEndMs).toBeGreaterThanOrEqual(before + gracePeriodSecs * 1000);
+			expect(gracePeriodEndMs).toBeLessThanOrEqual(after + gracePeriodSecs * 1000);
+		});
+	});
+
+	describe('error propagation', () => {
+		it('surfaces errors from client.markShipped unchanged', async () => {
+			const err = new Error('ChainUnavailable: markShipped failed');
+			mockMarkShipped.mockRejectedValueOnce(err);
+
+			await expect(submitMarkShipped('order-ms-err')).rejects.toThrow('ChainUnavailable: markShipped failed');
+		});
+
+		it('surfaces errors from client.submit unchanged', async () => {
+			const err = new Error('ChainUnavailable: submit failed');
+			mockSubmit.mockRejectedValueOnce(err);
+
+			await expect(submitMarkShipped('order-ms-submit-err')).rejects.toThrow('ChainUnavailable: submit failed');
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// submitReleaseEscrow
+// ---------------------------------------------------------------------------
+
+describe('submitReleaseEscrow', () => {
+	describe('escrow lookup', () => {
+		it('calls getEscrowByOrderId with the provided orderId', async () => {
+			await submitReleaseEscrow('order-rel-1');
+
+			expect(mockGetEscrowByOrderId).toHaveBeenCalledOnce();
+			expect(mockGetEscrowByOrderId).toHaveBeenCalledWith('order-rel-1');
+		});
+
+		it('throws if getEscrowByOrderId returns null', async () => {
+			mockGetEscrowByOrderId.mockResolvedValueOnce(null);
+
+			await expect(submitReleaseEscrow('order-rel-missing')).rejects.toThrow();
+		});
+	});
+
+	describe('protocol call arguments', () => {
+		it('calls client.releaseEscrow (not other tx methods)', async () => {
+			await submitReleaseEscrow('order-rel-2');
+
+			expect(mockReleaseEscrow).toHaveBeenCalledOnce();
+			expect(mockLockEscrowAda).not.toHaveBeenCalled();
+			expect(mockMarkShipped).not.toHaveBeenCalled();
+			expect(mockRefundEscrow).not.toHaveBeenCalled();
+		});
+
+		it('passes escrowUtxo with the utxo_tx_hash and utxo_output_index from the escrow row', async () => {
+			await submitReleaseEscrow('order-rel-3');
+
+			const args = mockReleaseEscrow.mock.calls[0][0] as Record<string, unknown>;
+			expect(args.escrowUtxo).toMatchObject({
+				txHash: STUB_ESCROW.utxo_tx_hash,
+				outputIndex: STUB_ESCROW.utxo_output_index,
+			});
+		});
+	});
+
+	describe('signing — backend signer', () => {
+		it('signs with the merchant backend signer', async () => {
+			await submitReleaseEscrow('order-rel-sign');
+
+			expect(mockGetMerchantSigner).toHaveBeenCalled();
+			expect(mockSign).toHaveBeenCalledOnce();
+			expect(mockSign).toHaveBeenCalledWith(STUB_ENVELOPE.hash);
+			expect(mockSignTx).not.toHaveBeenCalled();
+		});
+
+		it('submits with the witnesses from the merchant signer', async () => {
+			await submitReleaseEscrow('order-rel-witnesses');
+
+			const submitArgs = mockSubmit.mock.calls[0][0] as {
+				witnesses: unknown[];
+			};
+			expect(submitArgs.witnesses).toEqual(STUB_WITNESSES);
+		});
+	});
+
+	describe('return value', () => {
+		it('returns { txHash } equal to the envelope hash', async () => {
+			const result = await submitReleaseEscrow('order-rel-return');
+
+			expect(result).toEqual({ txHash: STUB_ENVELOPE.hash });
+		});
+	});
+
+	describe('error propagation', () => {
+		it('surfaces errors from client.releaseEscrow unchanged', async () => {
+			const err = new Error('ChainUnavailable: releaseEscrow failed');
+			mockReleaseEscrow.mockRejectedValueOnce(err);
+
+			await expect(submitReleaseEscrow('order-rel-err')).rejects.toThrow('ChainUnavailable: releaseEscrow failed');
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// submitRefundEscrow
+// ---------------------------------------------------------------------------
+
+describe('submitRefundEscrow', () => {
+	describe('escrow lookup', () => {
+		it('calls getEscrowByOrderId with the provided orderId', async () => {
+			await submitRefundEscrow('order-ref-1', STUB_BUYER_SIGNER);
+
+			expect(mockGetEscrowByOrderId).toHaveBeenCalledOnce();
+			expect(mockGetEscrowByOrderId).toHaveBeenCalledWith('order-ref-1');
+		});
+
+		it('throws if getEscrowByOrderId returns null', async () => {
+			mockGetEscrowByOrderId.mockResolvedValueOnce(null);
+
+			await expect(submitRefundEscrow('order-ref-missing', STUB_BUYER_SIGNER)).rejects.toThrow();
+		});
+	});
+
+	describe('protocol call arguments', () => {
+		it('calls client.refundEscrow (not other tx methods)', async () => {
+			await submitRefundEscrow('order-ref-2', STUB_BUYER_SIGNER);
+
+			expect(mockRefundEscrow).toHaveBeenCalledOnce();
+			expect(mockLockEscrowAda).not.toHaveBeenCalled();
+			expect(mockMarkShipped).not.toHaveBeenCalled();
+			expect(mockReleaseEscrow).not.toHaveBeenCalled();
+		});
+
+		it('passes escrowUtxo with the utxo_tx_hash and utxo_output_index from the escrow row', async () => {
+			await submitRefundEscrow('order-ref-3', STUB_BUYER_SIGNER);
+
+			const args = mockRefundEscrow.mock.calls[0][0] as Record<string, unknown>;
+			expect(args.escrowUtxo).toMatchObject({
+				txHash: STUB_ESCROW.utxo_tx_hash,
+				outputIndex: STUB_ESCROW.utxo_output_index,
+			});
+		});
+	});
+
+	describe('signing — buyer CIP-30 signer', () => {
+		it('signs with the buyer CIP-30 signer (not the merchant signer)', async () => {
+			await submitRefundEscrow('order-ref-sign', STUB_BUYER_SIGNER);
+
+			expect(mockSignTx).toHaveBeenCalledOnce();
+			expect(mockSignTx).toHaveBeenCalledWith(STUB_ENVELOPE.tx, true);
+			// Backend signer must NOT be called
+			expect(mockSign).not.toHaveBeenCalled();
+		});
+
+		it('calls wallet.getChangeAddress() is NOT required (refund just signs)', async () => {
+			// refundEscrow doesn't need to derive buyer PKH — it just signs the tx
+			await submitRefundEscrow('order-ref-no-addr', STUB_BUYER_SIGNER);
+
+			// The key assertion: mockSignTx was called (signing happened)
+			expect(mockSignTx).toHaveBeenCalledOnce();
+		});
+	});
+
+	describe('return value', () => {
+		it('returns { txHash } equal to the envelope hash', async () => {
+			const result = await submitRefundEscrow('order-ref-return', STUB_BUYER_SIGNER);
+
+			expect(result).toEqual({ txHash: STUB_ENVELOPE.hash });
+		});
+	});
+
+	describe('error propagation', () => {
+		it('surfaces errors from client.refundEscrow unchanged', async () => {
+			const err = new Error('ChainUnavailable: refundEscrow failed');
+			mockRefundEscrow.mockRejectedValueOnce(err);
+
+			await expect(submitRefundEscrow('order-ref-err', STUB_BUYER_SIGNER)).rejects.toThrow(
+				'ChainUnavailable: refundEscrow failed',
 			);
 		});
 	});

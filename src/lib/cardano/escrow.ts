@@ -1,15 +1,20 @@
 /**
- * Escrow orchestrator — lock path.
+ * Escrow orchestrator — lock + state-transition paths.
  *
- * Builds and submits the buyer's lock transaction that locks ADA or tokens into
- * the escrow smart contract. Unlike the traceability orchestrator, this uses the
- * CIP-30 browser wallet signer (buyer) rather than the backend signer.
+ * Builds and submits buyer/merchant escrow transactions:
+ *   - submitLockEscrow:     buyer locks ADA/tokens into the contract (CIP-30)
+ *   - submitMarkShipped:    merchant marks order as shipped (backend signer)
+ *   - submitReleaseEscrow:  merchant releases funds after grace period (backend signer)
+ *   - submitRefundEscrow:   buyer claims refund (CIP-30)
  *
  * Relies on:
- *   - getNetworkConfig()      — trpEndpoint, profile, merchantAddress
- *   - getShipDeadlineSeconds() — ship deadline timeout in seconds
- *   - CIP-30 buyer signer     — signs the resolved tx via wallet.signTx()
- *   - Client (codegen facade) — lockEscrowAda / lockEscrowTokens + submit
+ *   - getNetworkConfig()        — trpEndpoint, profile, merchantAddress
+ *   - getShipDeadlineSeconds()  — ship deadline timeout in seconds
+ *   - getGracePeriodSeconds()   — grace period timeout in seconds
+ *   - getMerchantSigner()       — backend Ed25519 signer (markShipped, releaseEscrow)
+ *   - CIP-30 buyer signer       — signs via wallet.signTx() (lockEscrow, refundEscrow)
+ *   - Client (codegen facade)   — protocol method dispatch + submit
+ *   - getEscrowByOrderId()      — reads escrow row for state-transition functions
  *
  * Note: script address routing is handled internally by tx3 via the embedded
  * script hash in the compiled protocol definition — no getScriptAddress() call
@@ -25,8 +30,11 @@ import type { TxEnvelope } from 'tx3-sdk/trp';
 import type { ProfileName } from '@/lib/tx3/protocol';
 import { Client } from '@/lib/tx3/protocol';
 
-import { getShipDeadlineSeconds } from './escrow-policy.js';
+import { getEscrowByOrderId } from '@/server-fns/escrows.js';
+
+import { getGracePeriodSeconds, getShipDeadlineSeconds } from './escrow-policy.js';
 import { getNetworkConfig } from './network.js';
+import { getMerchantSigner } from './signer.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -53,6 +61,13 @@ export interface LockResult {
 	lockTxHash: string;
 	lockOutputIndex: number;
 	datumCbor: string;
+}
+
+/** Return value from submitMarkShipped. */
+export interface MarkShippedResult {
+	txHash: string;
+	newUtxoRef: { txHash: string; outputIndex: number };
+	newDatumCbor: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -224,4 +239,173 @@ export async function submitLockEscrow(
 		lockOutputIndex,
 		datumCbor,
 	};
+}
+
+// ---------------------------------------------------------------------------
+// Datum CBOR construction — shipped datum (with grace_period_end = Some(ms))
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the CBOR-encoded EscrowDatum for the shipped state.
+ *
+ * Same structure as the lock datum but `grace_period_end` is
+ * `OptionInt::Some(gracePeriodEndMs)` — CBOR tag 122 wrapping the value.
+ */
+function buildShippedDatumCbor(
+	buyerPkh: Buffer,
+	merchantPkh: Buffer,
+	orderId: Buffer,
+	paidAt: number,
+	shipDeadline: number,
+	gracePeriodEndMs: number,
+): string {
+	// OptionInt::Some(value) = CBOR tag 122 (Plutus CONSTR 1) wrapping [value]
+	const someConstr = new CborTag([gracePeriodEndMs], 122);
+	const datum = new CborTag([buyerPkh, merchantPkh, orderId, paidAt, shipDeadline, someConstr], 121);
+	return cborEncode(datum).toString('hex');
+}
+
+// ---------------------------------------------------------------------------
+// Shared private pipeline helper for backend-signer state transitions
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared pipeline for merchant-driven escrow state transitions.
+ *
+ * 1. Construct the protocol Client.
+ * 2. Resolve the tx via the provided factory function.
+ * 3. Sign the resolved tx hash with the backend merchant signer.
+ * 4. Submit the signed tx.
+ * 5. Return the tx envelope.
+ */
+async function resolveSignAndSubmitWithBackendSigner(
+	buildTx: (client: Client) => Promise<TxEnvelope>,
+): Promise<TxEnvelope> {
+	const { trpEndpoint, profile } = getNetworkConfig();
+
+	const client = new Client({ endpoint: trpEndpoint }, profile as ProfileName);
+
+	const envelope = await buildTx(client);
+
+	const witnesses = getMerchantSigner().sign(envelope.hash);
+
+	await client.submit({
+		tx: { content: envelope.tx, contentType: 'hex' },
+		witnesses,
+	} satisfies Parameters<typeof client.submit>[0]);
+
+	return envelope;
+}
+
+// ---------------------------------------------------------------------------
+// Public API — state transitions
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds and submits the `mark_shipped` transaction.
+ *
+ * 1. Read current escrow row.
+ * 2. Compute shipped_at and grace_period_end timestamps.
+ * 3. Build markShipped tx with escrowUtxo, shippedAt, gracePeriodEnd.
+ * 4. Sign with backend merchant signer.
+ * 5. Submit.
+ * 6. Rebuild new datum CBOR (with grace_period_end = Some(ms)).
+ * 7. Return { txHash, newUtxoRef, newDatumCbor }.
+ */
+export async function submitMarkShipped(orderId: string): Promise<MarkShippedResult> {
+	const escrow = await getEscrowByOrderId(orderId);
+	if (!escrow) {
+		throw new Error(`ESCROW_NOT_FOUND: order_id=${orderId}`);
+	}
+
+	const shippedAt = Date.now();
+	const gracePeriodEnd = shippedAt + getGracePeriodSeconds() * 1000;
+
+	const escrowUtxo = { txHash: escrow.utxo_tx_hash, outputIndex: escrow.utxo_output_index };
+
+	const envelope = await resolveSignAndSubmitWithBackendSigner(client =>
+		client.markShipped({
+			escrowUtxo,
+			shippedAt,
+			gracePeriodEnd,
+		} as Parameters<typeof client.markShipped>[0]),
+	);
+
+	// Rebuild the new datum CBOR from the escrow row fields + new gracePeriodEnd
+	const buyerPkh = Buffer.from(escrow.buyer_pkh, 'hex');
+	const merchantPkh = Buffer.from(escrow.merchant_pkh, 'hex');
+	const orderIdBytes = Buffer.from(escrow.order_id, 'utf8');
+	const paidAt = Number(escrow.paid_at);
+	const shipDeadline = Number(escrow.ship_deadline);
+
+	const newDatumCbor = buildShippedDatumCbor(buyerPkh, merchantPkh, orderIdBytes, paidAt, shipDeadline, gracePeriodEnd);
+
+	// The new script output is always at index 0 per the tx3 TIR spec
+	return {
+		txHash: envelope.hash,
+		newUtxoRef: { txHash: envelope.hash, outputIndex: 0 },
+		newDatumCbor,
+	};
+}
+
+/**
+ * Builds and submits the `release_escrow` transaction.
+ *
+ * 1. Read current escrow row.
+ * 2. Build releaseEscrow tx with escrowUtxo.
+ * 3. Sign with backend merchant signer.
+ * 4. Submit.
+ * 5. Return { txHash }.
+ */
+export async function submitReleaseEscrow(orderId: string): Promise<{ txHash: string }> {
+	const escrow = await getEscrowByOrderId(orderId);
+	if (!escrow) {
+		throw new Error(`ESCROW_NOT_FOUND: order_id=${orderId}`);
+	}
+
+	const escrowUtxo = { txHash: escrow.utxo_tx_hash, outputIndex: escrow.utxo_output_index };
+
+	const envelope = await resolveSignAndSubmitWithBackendSigner(client =>
+		client.releaseEscrow({
+			escrowUtxo,
+		} as Parameters<typeof client.releaseEscrow>[0]),
+	);
+
+	return { txHash: envelope.hash };
+}
+
+/**
+ * Builds and submits the `refund_escrow` transaction.
+ *
+ * 1. Read current escrow row.
+ * 2. Build refundEscrow tx with escrowUtxo.
+ * 3. Sign with the buyer CIP-30 signer (partial sign = true).
+ * 4. Submit.
+ * 5. Return { txHash }.
+ */
+export async function submitRefundEscrow(orderId: string, buyerSigner: CardanoWalletAPI): Promise<{ txHash: string }> {
+	const escrow = await getEscrowByOrderId(orderId);
+	if (!escrow) {
+		throw new Error(`ESCROW_NOT_FOUND: order_id=${orderId}`);
+	}
+
+	const { trpEndpoint, profile } = getNetworkConfig();
+	const client = new Client({ endpoint: trpEndpoint }, profile as ProfileName);
+
+	const escrowUtxo = { txHash: escrow.utxo_tx_hash, outputIndex: escrow.utxo_output_index };
+
+	const envelope = await client.refundEscrow({
+		escrowUtxo,
+	} as Parameters<typeof client.refundEscrow>[0]);
+
+	// Sign with buyer's CIP-30 wallet (partial sign = true)
+	const witnessSetCborHex = await buyerSigner.signTx(envelope.tx, true);
+	const witnesses = decodeWitnessSet(witnessSetCborHex);
+
+	await client.submit({
+		tx: { content: envelope.tx, contentType: 'hex' },
+		witnesses,
+	} satisfies Parameters<typeof client.submit>[0]);
+
+	return { txHash: envelope.hash };
 }
