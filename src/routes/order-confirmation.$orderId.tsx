@@ -2,6 +2,7 @@ import { IconCheck, IconClock, IconPackage, IconWallet } from '@tabler/icons-rea
 import { createFileRoute } from '@tanstack/react-router';
 
 // Components
+import { EscrowStatusCard } from '@/components/order/EscrowStatusCard';
 import { OrderTraceTimeline } from '@/components/order/OrderTraceTimeline';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -249,6 +250,13 @@ function OrderConfirmation() {
 						</div>
 					</div>
 				</div>
+
+				{/* Escrow Status */}
+				{order.escrow && (
+					<div className="mt-6">
+						<EscrowStatusCard escrow={order.escrow} networkProfile={import.meta.env.VITE_TX3_PROFILE ?? 'local'} />
+					</div>
+				)}
 
 				{/* On-chain Trace Timeline */}
 				{order.events && order.events.length > 0 && (
