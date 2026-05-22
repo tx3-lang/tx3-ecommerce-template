@@ -11,7 +11,9 @@
     "lint": "biome lint",
     "check": "biome check",
     "tslint": "tsc --noEmit",
-    "mark-shipped": "tsx scripts/mark-order-shipped.ts"
+    "mark-shipped": "tsx scripts/mark-order-shipped.ts",
+    "mark-completed": "tsx scripts/mark-order-completed.ts",
+    "cancel-order": "tsx scripts/cancel-order.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",
