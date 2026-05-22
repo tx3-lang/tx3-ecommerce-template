@@ -2,6 +2,7 @@ name: Aiken Check
 
 on:
   pull_request:
+    branches: [main, develop]
     paths:
       - 'aiken/**'
 
@@ -17,6 +18,7 @@ jobs:
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf https://install.aiken-lang.org | sh
           echo "$HOME/.aiken/bin" >> $GITHUB_PATH
+          $HOME/.aiken/bin/aikup install v1.1.21
 
       - name: Run aiken check
         working-directory: aiken
