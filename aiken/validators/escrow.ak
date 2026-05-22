@@ -5,6 +5,7 @@ use cardano/assets.{from_lovelace}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, placeholder,
 }
+use config
 use escrow_types.{EscrowDatum, EscrowRedeemer, MarkShipped, PosixTime, Refund, Release}
 
 // ---------------------------------------------------------------------------
@@ -12,8 +13,8 @@ use escrow_types.{EscrowDatum, EscrowRedeemer, MarkShipped, PosixTime, Refund, R
 // ---------------------------------------------------------------------------
 
 /// Grace period added to shipped_at to compute the earliest release timestamp.
-/// 14 days expressed in milliseconds.
-pub const grace_period_constant: PosixTime = 1_209_600_000
+/// Value injected from aiken.toml [config.<env>] grace_period_ms at build time.
+pub const grace_period_constant: PosixTime = config.grace_period_ms
 
 // ---------------------------------------------------------------------------
 // Validator
@@ -374,14 +375,13 @@ test mark_shipped_after_deadline() {
 // ---------------------------------------------------------------------------
 
 // grace_period_end = shipped_at_ms + grace_period_constant
-//                  = 1_700_100_000_000 + 1_209_600_000
-//                  = 1_701_309_600_000
-const grace_period_end_ms: Int = 1_701_309_600_000
+// Derived from the active env's config so the test adapts to any build.
+const grace_period_end_ms: Int = shipped_at_ms + grace_period_constant
 
 // A valid_from time that is >= grace_period_end
-const release_valid_from_ms: Int = 1_701_310_000_000
+const release_valid_from_ms: Int = grace_period_end_ms + 400_000
 
-const release_valid_to_ms: Int = 1_701_311_000_000
+const release_valid_to_ms: Int = grace_period_end_ms + 1_400_000
 
 /// release_success: Shipped UTxO + Release + merchant sig + valid_from >= grace_period_end → valid.
 test release_success() {

@@ -15,4 +15,11 @@ name = "aiken-lang/stdlib"
 version = "v2.2.0"
 source = "github"
 
-[config]
+[config.default]
+grace_period_ms = 1209600000
+
+[config.local]
+grace_period_ms = 30000
+
+[config.preview]
+grace_period_ms = 1209600000
