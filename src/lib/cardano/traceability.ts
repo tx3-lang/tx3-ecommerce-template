@@ -24,53 +24,69 @@ import { getMerchantSigner } from './signer.js';
 // Public types
 // ---------------------------------------------------------------------------
 
-export interface PaidTraceResult {
+export interface TraceResult {
 	txHash: string;
 	confirmed: boolean;
 }
 
+/** @deprecated Use TraceResult instead */
+export type PaidTraceResult = TraceResult;
+
 // ---------------------------------------------------------------------------
-// Internal payload type
+// Internal payload types
 // ---------------------------------------------------------------------------
 
-interface TracePayload {
+interface BasePayload {
 	v: 1;
-	event: 'paid';
 	order_id: string;
 	merchant: string;
 	ts: number;
+}
+
+interface PaidPayload extends BasePayload {
+	event: 'paid';
 	data: Record<string, never>;
 }
 
+interface ShippedPayloadNoTracking extends BasePayload {
+	event: 'shipped';
+	data: Record<string, never>;
+}
+
+interface ShippedPayloadWithTracking extends BasePayload {
+	event: 'shipped';
+	data: { tracking_number: string };
+}
+
+type ShippedPayload = ShippedPayloadNoTracking | ShippedPayloadWithTracking;
+
+interface CompletedPayload extends BasePayload {
+	event: 'completed';
+	data: Record<string, never>;
+}
+
+interface CancelledPayload extends BasePayload {
+	event: 'cancelled';
+	data: { reason: string };
+}
+
+type TracePayload = PaidPayload | ShippedPayload | CompletedPayload | CancelledPayload;
+
 // ---------------------------------------------------------------------------
-// Implementation
+// Private shared pipeline
 // ---------------------------------------------------------------------------
 
 /**
- * Submits a `paid` traceability event for the given order.
- *
- * Pipeline:
+ * Shared pipeline for all traceability events:
  * 1. Read network config (trpEndpoint, profile, merchantAddress).
- * 2. Build the metadata payload per the spec schema.
- * 3. Hex-encode the JSON-serialised payload (tx3 Bytes args are hex strings).
- * 4. Resolve the `record_order_event` tx via the codegen Client, injecting
- *    the merchant party via an args cast (PROFILES[profile].parties is {}).
- * 5. Sign the resolved tx hash with the backend Ed25519 signer.
- * 6. Submit the signed tx to the TRP.
- * 7. Return { txHash, confirmed: false } — reconciliation is handled by A12.
+ * 2. Hex-encode the JSON-serialised payload (tx3 Bytes args are hex strings).
+ * 3. Resolve the `record_order_event` tx via the codegen Client.
+ * 4. Sign the resolved tx hash with the backend Ed25519 signer.
+ * 5. Submit the signed tx to the TRP.
+ * 6. Return { txHash, confirmed: false } — reconciliation is handled by A12.
  */
-export async function submitPaidTrace(orderId: string): Promise<PaidTraceResult> {
+async function submitEvent(payload: TracePayload): Promise<TraceResult> {
 	const { trpEndpoint, profile, merchantAddress } = getNetworkConfig();
-
-	// Build payload
-	const payload: TracePayload = {
-		v: 1,
-		event: 'paid',
-		order_id: orderId,
-		merchant: merchantAddress,
-		ts: Math.floor(Date.now() / 1000),
-		data: {} as Record<string, never>,
-	};
 
 	// Hex-encode the UTF-8 JSON payload (tx3 Bytes args expect a hex string)
 	const metadataPayload = Buffer.from(JSON.stringify(payload), 'utf8').toString('hex');
@@ -97,4 +113,91 @@ export async function submitPaidTrace(orderId: string): Promise<PaidTraceResult>
 
 	// A12 handles confirmation polling; return confirmed: false for now
 	return { txHash: envelope.hash, confirmed: false };
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Submits a `paid` traceability event for the given order.
+ */
+export async function submitPaidTrace(orderId: string): Promise<TraceResult> {
+	const { merchantAddress } = getNetworkConfig();
+
+	const payload: PaidPayload = {
+		v: 1,
+		event: 'paid',
+		order_id: orderId,
+		merchant: merchantAddress,
+		ts: Math.floor(Date.now() / 1000),
+		data: {} as Record<string, never>,
+	};
+
+	return submitEvent(payload);
+}
+
+/**
+ * Submits a `shipped` traceability event for the given order.
+ * Optionally includes a tracking number in the payload data.
+ */
+export async function submitShippedTrace(orderId: string, opts?: { trackingNumber?: string }): Promise<TraceResult> {
+	const { merchantAddress } = getNetworkConfig();
+
+	const payload: ShippedPayload = opts?.trackingNumber
+		? {
+				v: 1,
+				event: 'shipped',
+				order_id: orderId,
+				merchant: merchantAddress,
+				ts: Math.floor(Date.now() / 1000),
+				data: { tracking_number: opts.trackingNumber },
+			}
+		: {
+				v: 1,
+				event: 'shipped',
+				order_id: orderId,
+				merchant: merchantAddress,
+				ts: Math.floor(Date.now() / 1000),
+				data: {} as Record<string, never>,
+			};
+
+	return submitEvent(payload);
+}
+
+/**
+ * Submits a `completed` traceability event for the given order.
+ */
+export async function submitCompletedTrace(orderId: string): Promise<TraceResult> {
+	const { merchantAddress } = getNetworkConfig();
+
+	const payload: CompletedPayload = {
+		v: 1,
+		event: 'completed',
+		order_id: orderId,
+		merchant: merchantAddress,
+		ts: Math.floor(Date.now() / 1000),
+		data: {} as Record<string, never>,
+	};
+
+	return submitEvent(payload);
+}
+
+/**
+ * Submits a `cancelled` traceability event for the given order.
+ * The cancellation reason is required.
+ */
+export async function submitCancelledTrace(orderId: string, opts: { reason: string }): Promise<TraceResult> {
+	const { merchantAddress } = getNetworkConfig();
+
+	const payload: CancelledPayload = {
+		v: 1,
+		event: 'cancelled',
+		order_id: orderId,
+		merchant: merchantAddress,
+		ts: Math.floor(Date.now() / 1000),
+		data: { reason: opts.reason },
+	};
+
+	return submitEvent(payload);
 }

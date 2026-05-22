@@ -83,7 +83,9 @@ const STUB_SUBMIT_RESPONSE = { status: 'accepted' };
 // factories are already registered and the imports below will receive mocks.
 // ---------------------------------------------------------------------------
 
-const { submitPaidTrace } = await import('../traceability.js');
+const { submitPaidTrace, submitShippedTrace, submitCompletedTrace, submitCancelledTrace } = await import(
+	'../traceability.js'
+);
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -98,14 +100,25 @@ beforeEach(() => {
 	mockSubmit.mockResolvedValue(STUB_SUBMIT_RESPONSE);
 });
 
+// ---------------------------------------------------------------------------
+// Helper to decode the metadata payload from a mock call
+// ---------------------------------------------------------------------------
+
+function decodePayload(callIndex = 0) {
+	const callArgs = mockRecordOrderEvent.mock.calls[callIndex][0] as { metadataPayload: string; merchant: string };
+	return JSON.parse(Buffer.from(callArgs.metadataPayload, 'hex').toString('utf8'));
+}
+
 describe('submitPaidTrace', () => {
 	describe('payload shape', () => {
 		it('builds a payload with v=1 and event="paid"', async () => {
 			await submitPaidTrace('order-uuid-1234');
 
 			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
-			const callArgs = mockRecordOrderEvent.mock.calls[0][0] as { metadataPayload: string; merchant: string };
-			const raw = Buffer.from(callArgs.metadataPayload, 'hex').toString('utf8');
+			const raw = Buffer.from(
+				(mockRecordOrderEvent.mock.calls[0][0] as { metadataPayload: string; merchant: string }).metadataPayload,
+				'hex',
+			).toString('utf8');
 			const payload = JSON.parse(raw);
 
 			expect(payload.v).toBe(1);
@@ -227,6 +240,174 @@ describe('submitPaidTrace', () => {
 			mockRecordOrderEvent.mockRejectedValueOnce(resolveError);
 
 			await expect(submitPaidTrace('order-resolve-error')).rejects.toThrow('resolve failed');
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// submitShippedTrace
+// ---------------------------------------------------------------------------
+
+describe('submitShippedTrace', () => {
+	describe('payload shape — no tracking number', () => {
+		it('builds a payload with v=1 and event="shipped"', async () => {
+			await submitShippedTrace('order-shipped-1');
+
+			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
+			const payload = decodePayload();
+
+			expect(payload.v).toBe(1);
+			expect(payload.event).toBe('shipped');
+		});
+
+		it('includes the order_id in the payload', async () => {
+			await submitShippedTrace('order-shipped-2');
+
+			const payload = decodePayload();
+			expect(payload.order_id).toBe('order-shipped-2');
+		});
+
+		it('includes data as an empty object when no trackingNumber is provided', async () => {
+			await submitShippedTrace('order-shipped-3');
+
+			const payload = decodePayload();
+			expect(payload.data).toEqual({});
+		});
+
+		it('includes data as an empty object when opts is provided but trackingNumber is omitted', async () => {
+			await submitShippedTrace('order-shipped-4', {});
+
+			const payload = decodePayload();
+			expect(payload.data).toEqual({});
+		});
+	});
+
+	describe('payload shape — with tracking number', () => {
+		it('includes data.tracking_number when trackingNumber is provided', async () => {
+			await submitShippedTrace('order-shipped-5', { trackingNumber: 'ABC123' });
+
+			const payload = decodePayload();
+			expect(payload.event).toBe('shipped');
+			expect(payload.data).toEqual({ tracking_number: 'ABC123' });
+		});
+	});
+
+	describe('pipeline', () => {
+		it('calls recordOrderEvent, signer.sign, and client.submit each once', async () => {
+			await submitShippedTrace('order-shipped-pipeline');
+
+			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
+			expect(mockSign).toHaveBeenCalledOnce();
+			expect(mockSubmit).toHaveBeenCalledOnce();
+		});
+
+		it('returns { txHash, confirmed: false }', async () => {
+			const result = await submitShippedTrace('order-shipped-return');
+
+			expect(result).toEqual({ txHash: STUB_ENVELOPE.hash, confirmed: false });
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// submitCompletedTrace
+// ---------------------------------------------------------------------------
+
+describe('submitCompletedTrace', () => {
+	describe('payload shape', () => {
+		it('builds a payload with v=1 and event="completed"', async () => {
+			await submitCompletedTrace('order-completed-1');
+
+			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
+			const payload = decodePayload();
+
+			expect(payload.v).toBe(1);
+			expect(payload.event).toBe('completed');
+		});
+
+		it('includes the order_id in the payload', async () => {
+			await submitCompletedTrace('order-completed-2');
+
+			const payload = decodePayload();
+			expect(payload.order_id).toBe('order-completed-2');
+		});
+
+		it('includes data as an empty object', async () => {
+			await submitCompletedTrace('order-completed-3');
+
+			const payload = decodePayload();
+			expect(payload.data).toEqual({});
+		});
+	});
+
+	describe('pipeline', () => {
+		it('calls recordOrderEvent, signer.sign, and client.submit each once', async () => {
+			await submitCompletedTrace('order-completed-pipeline');
+
+			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
+			expect(mockSign).toHaveBeenCalledOnce();
+			expect(mockSubmit).toHaveBeenCalledOnce();
+		});
+
+		it('returns { txHash, confirmed: false }', async () => {
+			const result = await submitCompletedTrace('order-completed-return');
+
+			expect(result).toEqual({ txHash: STUB_ENVELOPE.hash, confirmed: false });
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// submitCancelledTrace
+// ---------------------------------------------------------------------------
+
+describe('submitCancelledTrace', () => {
+	describe('payload shape', () => {
+		it('builds a payload with v=1 and event="cancelled"', async () => {
+			await submitCancelledTrace('order-cancelled-1', { reason: 'buyer requested' });
+
+			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
+			const payload = decodePayload();
+
+			expect(payload.v).toBe(1);
+			expect(payload.event).toBe('cancelled');
+		});
+
+		it('includes the order_id in the payload', async () => {
+			await submitCancelledTrace('order-cancelled-2', { reason: 'out of stock' });
+
+			const payload = decodePayload();
+			expect(payload.order_id).toBe('order-cancelled-2');
+		});
+
+		it('includes data.reason from the opts argument', async () => {
+			await submitCancelledTrace('order-cancelled-3', { reason: 'buyer requested' });
+
+			const payload = decodePayload();
+			expect(payload.data).toEqual({ reason: 'buyer requested' });
+		});
+
+		it('carries the provided reason through to data.reason', async () => {
+			await submitCancelledTrace('order-cancelled-4', { reason: 'fraud detected' });
+
+			const payload = decodePayload();
+			expect(payload.data.reason).toBe('fraud detected');
+		});
+	});
+
+	describe('pipeline', () => {
+		it('calls recordOrderEvent, signer.sign, and client.submit each once', async () => {
+			await submitCancelledTrace('order-cancelled-pipeline', { reason: 'test' });
+
+			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
+			expect(mockSign).toHaveBeenCalledOnce();
+			expect(mockSubmit).toHaveBeenCalledOnce();
+		});
+
+		it('returns { txHash, confirmed: false }', async () => {
+			const result = await submitCancelledTrace('order-cancelled-return', { reason: 'test' });
+
+			expect(result).toEqual({ txHash: STUB_ENVELOPE.hash, confirmed: false });
 		});
 	});
 });
