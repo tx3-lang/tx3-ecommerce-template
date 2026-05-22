@@ -2,17 +2,60 @@ party Buyer;
 
 party Merchant;
 
-tx pay_with_ada(
-    quantity: Int
+policy Escrow = 0xfc7d512718ecf83ae3267b9dd69f6ecd4737bb8e5e14bb047c3e1c83;
+
+// Option<Int> — represents None or Some(value) for grace_period_end
+type OptionInt {
+    None,
+    Some {
+        value: Int,
+    },
+}
+
+// Mirrors EscrowDatum in aiken/lib/escrow_types.ak
+type EscrowDatum {
+    buyer: Bytes,
+    merchant: Bytes,
+    order_id: Bytes,
+    paid_at: Int,
+    ship_deadline: Int,
+    grace_period_end: OptionInt,
+}
+
+// Mirrors EscrowRedeemer in aiken/lib/escrow_types.ak
+type EscrowRedeemer {
+    MarkShipped {
+        shipped_at: Int,
+    },
+    Release,
+    Refund,
+}
+
+// Lock ADA into escrow — buyer pays, funds held at script address with Pending datum
+tx lock_escrow_ada(
+    quantity: Int,
+    buyer_pkh: Bytes,
+    merchant_pkh: Bytes,
+    order_id: Bytes,
+    paid_at: Int,
+    ship_deadline: Int,
 ) {
     input source {
         from: Buyer,
         min_amount: Ada(quantity) + fees,
     }
-    
-    output payment {
-        to: Merchant,
+
+    output escrow_output {
+        to: Escrow,
         amount: Ada(quantity),
+        datum: EscrowDatum {
+            buyer: buyer_pkh,
+            merchant: merchant_pkh,
+            order_id: order_id,
+            paid_at: paid_at,
+            ship_deadline: ship_deadline,
+            grace_period_end: OptionInt::None {},
+        },
     }
 
     output {
@@ -21,32 +64,97 @@ tx pay_with_ada(
     }
 
     signers {
-        Merchant,
+        Buyer,
     }
 }
 
-tx pay_with_tokens(
-    quantity: Int,
+// Lock native tokens into escrow — buyer pays tokens + min-ADA, held at script address
+tx lock_escrow_tokens(
     token_policy: Bytes,
     asset_name: Bytes,
+    token_quantity: Int,
+    min_ada: Int,
+    buyer_pkh: Bytes,
+    merchant_pkh: Bytes,
+    order_id: Bytes,
+    paid_at: Int,
+    ship_deadline: Int,
 ) {
     locals {
-        tokens: AnyAsset(token_policy, asset_name, quantity),
+        tokens: AnyAsset(token_policy, asset_name, token_quantity),
     }
 
     input* source {
         from: Buyer,
-        min_amount: fees + tokens + min_utxo(payment),
+        min_amount: fees + tokens + Ada(min_ada),
     }
 
-    output payment {
-        to: Merchant,
-        amount: tokens + min_utxo(payment),
+    output escrow_output {
+        to: Escrow,
+        amount: tokens + Ada(min_ada),
+        datum: EscrowDatum {
+            buyer: buyer_pkh,
+            merchant: merchant_pkh,
+            order_id: order_id,
+            paid_at: paid_at,
+            ship_deadline: ship_deadline,
+            grace_period_end: OptionInt::None {},
+        },
     }
 
     output {
         to: Buyer,
-        amount: source - tokens - fees - min_utxo(payment),
+        amount: source - tokens - Ada(min_ada) - fees,
+    }
+
+    signers {
+        Buyer,
+    }
+}
+
+// Mark shipment — merchant spends Pending UTxO and re-locks with Shipped datum
+tx mark_shipped(
+    escrow_utxo: UtxoRef,
+    shipped_at: Int,
+    grace_period_end: Int,
+) {
+    input gas {
+        from: Merchant,
+        min_amount: fees,
+    }
+
+    input locked {
+        from: Escrow,
+        ref: escrow_utxo,
+        datum_is: EscrowDatum,
+        redeemer: EscrowRedeemer::MarkShipped {
+            shipped_at: shipped_at,
+        },
+    }
+
+    collateral {
+        from: Merchant,
+        min_amount: fees,
+    }
+
+    output {
+        to: Escrow,
+        amount: locked,
+        datum: EscrowDatum {
+            buyer: locked.buyer,
+            merchant: locked.merchant,
+            order_id: locked.order_id,
+            paid_at: locked.paid_at,
+            ship_deadline: locked.ship_deadline,
+            grace_period_end: OptionInt::Some {
+                value: grace_period_end,
+            },
+        },
+    }
+
+    output {
+        to: Merchant,
+        amount: gas - fees,
     }
 
     signers {
@@ -54,6 +162,69 @@ tx pay_with_tokens(
     }
 }
 
+// Release escrow — merchant collects funds after grace period has elapsed
+tx release_escrow(
+    escrow_utxo: UtxoRef,
+) {
+    input gas {
+        from: Merchant,
+        min_amount: fees,
+    }
+
+    input locked {
+        from: Escrow,
+        ref: escrow_utxo,
+        datum_is: EscrowDatum,
+        redeemer: EscrowRedeemer::Release {},
+    }
+
+    collateral {
+        from: Merchant,
+        min_amount: fees,
+    }
+
+    output {
+        to: Merchant,
+        amount: gas + locked - fees,
+    }
+
+    signers {
+        Merchant,
+    }
+}
+
+// Refund escrow — buyer reclaims funds after ship_deadline has passed
+tx refund_escrow(
+    escrow_utxo: UtxoRef,
+) {
+    input gas {
+        from: Buyer,
+        min_amount: fees,
+    }
+
+    input locked {
+        from: Escrow,
+        ref: escrow_utxo,
+        datum_is: EscrowDatum,
+        redeemer: EscrowRedeemer::Refund {},
+    }
+
+    collateral {
+        from: Buyer,
+        min_amount: fees,
+    }
+
+    output {
+        to: Buyer,
+        amount: gas + locked - fees,
+    }
+
+    signers {
+        Buyer,
+    }
+}
+
+// Record an order lifecycle event on-chain via tx metadata (traceability)
 tx record_order_event(
     metadata_payload: Bytes,
 ) {
