@@ -290,7 +290,7 @@ describe('DB updates on success', () => {
 				order_id: ORDER_ID,
 				event_type: 'shipped',
 				tx_hash: TX_HASH,
-				payload: expect.objectContaining({ event: 'shipped' }),
+				payload: expect.objectContaining({ event: 'shipped', tracking_number: 'TRACK-XYZ-001' }),
 			}),
 		);
 	});
