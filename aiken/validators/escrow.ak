@@ -1,5 +1,5 @@
 use aiken/collection/list
-use aiken/interval
+use aiken/interval.{Finite}
 use cardano/address.{Address, Script}
 use cardano/assets.{from_lovelace}
 use cardano/transaction.{
@@ -32,7 +32,7 @@ validator escrow {
     when escrow_redeemer is {
       MarkShipped { shipped_at } ->
         check_mark_shipped(escrow_datum, shipped_at, own_ref, ctx)
-      Release -> False
+      Release -> check_release(escrow_datum, ctx)
       Refund -> False
     }
   }
@@ -100,6 +100,31 @@ fn check_mark_shipped(
     }
 
   is_pending && merchant_signed && time_valid && before_deadline && valid_output
+}
+
+// ---------------------------------------------------------------------------
+// Release logic
+// ---------------------------------------------------------------------------
+
+fn check_release(datum: EscrowDatum, ctx: Transaction) -> Bool {
+  // 1. Must be in Shipped state (grace_period_end == Some(t))
+  when datum.grace_period_end is {
+    None -> False
+    Some(grace_period_end_t) -> {
+      // 2. tx.valid_from must be >= grace_period_end
+      let time_valid =
+        when ctx.validity_range.lower_bound.bound_type is {
+          Finite(from_time) -> from_time >= grace_period_end_t
+          _ -> False
+        }
+
+      // 3. Merchant must have signed
+      let merchant_signed =
+        list.has(ctx.extra_signatories, datum.merchant)
+
+      time_valid && merchant_signed
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -316,4 +341,77 @@ test mark_shipped_after_deadline() {
     }
 
   !check_mark_shipped(pending_datum(), late_shipped_at, own_output_ref(), tx)
+}
+
+// ---------------------------------------------------------------------------
+// Release tests
+// ---------------------------------------------------------------------------
+
+// grace_period_end = shipped_at_ms + grace_period_constant
+//                  = 1_700_100_000_000 + 1_209_600_000
+//                  = 1_701_309_600_000
+const grace_period_end_ms: Int = 1_701_309_600_000
+
+// A valid_from time that is >= grace_period_end
+const release_valid_from_ms: Int = 1_701_310_000_000
+
+const release_valid_to_ms: Int = 1_701_311_000_000
+
+/// release_success: Shipped UTxO + Release + merchant sig + valid_from >= grace_period_end → valid.
+test release_success() {
+  let input = make_script_input(shipped_datum())
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [input],
+      extra_signatories: [merchant_vkh],
+      validity_range: make_validity_range(release_valid_from_ms, release_valid_to_ms),
+    }
+
+  check_release(shipped_datum(), tx)
+}
+
+/// release_before_grace_period: valid_from < grace_period_end → invalid.
+test release_before_grace_period() {
+  // valid_from is 1 ms before grace_period_end
+  let early_valid_from = grace_period_end_ms - 1
+  let input = make_script_input(shipped_datum())
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [input],
+      extra_signatories: [merchant_vkh],
+      validity_range: make_validity_range(early_valid_from, grace_period_end_ms + 1_000_000),
+    }
+
+  !check_release(shipped_datum(), tx)
+}
+
+/// release_pending_state: Input in Pending + Release → invalid.
+test release_pending_state() {
+  let input = make_script_input(pending_datum())
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [input],
+      extra_signatories: [merchant_vkh],
+      validity_range: make_validity_range(release_valid_from_ms, release_valid_to_ms),
+    }
+
+  !check_release(pending_datum(), tx)
+}
+
+/// release_wrong_signer: Buyer signs Release → invalid.
+test release_wrong_signer() {
+  let input = make_script_input(shipped_datum())
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [input],
+      // buyer signs, NOT merchant
+      extra_signatories: [buyer_vkh],
+      validity_range: make_validity_range(release_valid_from_ms, release_valid_to_ms),
+    }
+
+  !check_release(shipped_datum(), tx)
 }
