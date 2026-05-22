@@ -2,9 +2,10 @@
  * Tests for src/lib/cardano/traceability.ts
  *
  * Mocks at all three external boundaries:
- *   - @/lib/tx3/protocol  — codegen Client (recordOrderEvent + submit)
- *   - ./signer.js          — getMerchantSigner
- *   - ./network.js         — getNetworkConfig
+ *   - @/lib/tx3/protocol        — codegen Client (recordOrderEvent + submit)
+ *   - ./signer.js               — getMerchantSigner
+ *   - ./network.js              — getNetworkConfig
+ *   - @/server-fns/escrows      — getEscrowByOrderId
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -71,6 +72,16 @@ vi.mock('../network.js', () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Mock: escrows server-fn
+// ---------------------------------------------------------------------------
+
+const mockGetEscrowByOrderId = vi.fn();
+
+vi.mock('@/server-fns/escrows', () => ({
+	getEscrowByOrderId: mockGetEscrowByOrderId,
+}));
+
+// ---------------------------------------------------------------------------
 // Stub return values for protocol calls
 // ---------------------------------------------------------------------------
 
@@ -98,6 +109,8 @@ beforeEach(() => {
 	mockGetMerchantSigner.mockReturnValue({ sign: mockSign });
 	mockRecordOrderEvent.mockResolvedValue(STUB_ENVELOPE);
 	mockSubmit.mockResolvedValue(STUB_SUBMIT_RESPONSE);
+	// Default: no escrow row exists
+	mockGetEscrowByOrderId.mockResolvedValue(null);
 });
 
 // ---------------------------------------------------------------------------
@@ -240,6 +253,34 @@ describe('submitPaidTrace', () => {
 			mockRecordOrderEvent.mockRejectedValueOnce(resolveError);
 
 			await expect(submitPaidTrace('order-resolve-error')).rejects.toThrow('resolve failed');
+		});
+	});
+
+	describe('escrow short-circuit', () => {
+		const STUB_ESCROW_TX_HASH = 'escrow_lock_tx_hash_aabbcc';
+
+		it('returns { txHash: escrow.utxo_tx_hash, confirmed: true } without submitting when escrow row exists', async () => {
+			const stubEscrow: Partial<Database.Escrow> = {
+				order_id: 'order-escrow-1',
+				utxo_tx_hash: STUB_ESCROW_TX_HASH,
+				status: 'pending',
+			};
+			mockGetEscrowByOrderId.mockResolvedValueOnce(stubEscrow);
+
+			const result = await submitPaidTrace('order-escrow-1');
+
+			expect(result).toEqual({ txHash: STUB_ESCROW_TX_HASH, confirmed: true });
+			expect(mockRecordOrderEvent).not.toHaveBeenCalled();
+			expect(mockSubmit).not.toHaveBeenCalled();
+		});
+
+		it('falls back to the metadata-only chain path when no escrow row exists', async () => {
+			// mockGetEscrowByOrderId already returns null by default from beforeEach
+			const result = await submitPaidTrace('order-no-escrow');
+
+			expect(result).toEqual({ txHash: STUB_ENVELOPE.hash, confirmed: false });
+			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
+			expect(mockSubmit).toHaveBeenCalledOnce();
 		});
 	});
 });

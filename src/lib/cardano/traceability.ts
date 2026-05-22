@@ -17,6 +17,7 @@ import type { TxEnvelope } from 'tx3-sdk/trp';
 import type { ProfileName } from '@/lib/tx3/protocol';
 import { Client } from '@/lib/tx3/protocol';
 
+import { getEscrowByOrderId } from '@/server-fns/escrows';
 import { getNetworkConfig } from './network.js';
 import { getMerchantSigner } from './signer.js';
 
@@ -118,8 +119,21 @@ async function submitEvent(payload: TracePayload): Promise<TraceResult> {
 
 /**
  * Submits a `paid` traceability event for the given order.
+ *
+ * If an escrow row already exists for this order the lock tx already records
+ * the payment on-chain, so we skip the metadata-only trace and return the
+ * escrow's utxo_tx_hash directly (confirmed: true).
+ *
+ * If no escrow row exists we fall back to the original metadata-only path.
  */
 export async function submitPaidTrace(orderId: string): Promise<TraceResult> {
+	// Short-circuit: if an escrow lock tx was already submitted for this order,
+	// return its tx hash instead of emitting a redundant metadata trace.
+	const escrow = await getEscrowByOrderId(orderId);
+	if (escrow !== null) {
+		return { txHash: escrow.utxo_tx_hash, confirmed: true };
+	}
+
 	const { merchantAddress } = getNetworkConfig();
 
 	const payload: PaidPayload = {
