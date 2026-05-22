@@ -29,9 +29,6 @@ export interface TraceResult {
 	confirmed: boolean;
 }
 
-/** @deprecated Use TraceResult instead */
-export type PaidTraceResult = TraceResult;
-
 // ---------------------------------------------------------------------------
 // Internal payload types
 // ---------------------------------------------------------------------------
