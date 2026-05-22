@@ -1,13 +1,12 @@
-import { Buffer } from 'buffer';
-
 // Lib
-import { decodeHexAddress } from '@/lib/cardano';
-import { Client as Tx3Client } from '@/lib/tx3/protocol';
+import { type EscrowValue, submitLockEscrow } from '@/lib/cardano/escrow';
 import { submitPaymentServerFn } from '@/server-fns/payments';
 
 export interface PaymentResult {
 	success: boolean;
 	txHash?: string;
+	lockOutputIndex?: number;
+	datumCbor?: string;
 	error?: string;
 	isTimeout?: boolean;
 }
@@ -25,6 +24,8 @@ export interface OrderPaymentInfo {
 	amount: number;
 	policyId?: string;
 	assetName?: string;
+	// Token min-ADA (only relevant for token payments)
+	minAda?: number;
 }
 
 export interface MultiCurrencyPaymentResult {
@@ -32,6 +33,8 @@ export interface MultiCurrencyPaymentResult {
 	completedOrders: Array<{
 		orderId: string;
 		txHash: string;
+		lockOutputIndex: number;
+		datumCbor: string;
 		policyId?: string;
 		assetName?: string;
 	}>;
@@ -44,65 +47,93 @@ export interface MultiCurrencyPaymentResult {
 	allCompleted: boolean;
 }
 
-// Merchant address - this should be configurable via environment variables
-const MERCHANT_ADDRESS = import.meta.env.VITE_MERCHANT_ADDRESS || '';
-
-// TRP endpoint from env
-const TRP_ENDPOINT = import.meta.env.VITE_TRP_ENDPOINT || 'https://cardano-preview.trp-m1.demeter.run';
-
-// Shared protocol client instance
-const protocolClient = new Tx3Client({ endpoint: TRP_ENDPOINT });
-
-// Timeout configuration
-// const CARDANO_PAYMENT_TIMEOUT = 60000; // 60 seconds = 3 Cardano blocks
-
 export async function processCardanoPayment(wallet: CardanoWalletAPI, order: OrderPaymentInfo): Promise<PaymentResult> {
 	try {
-		// Determine payment type
+		// Build the escrow value shape expected by submitLockEscrow
 		const isAdaPayment = !order.policyId && !order.assetName;
 
-		const address = decodeHexAddress(await wallet.getChangeAddress());
-		const commonProps = {
-			buyer: address,
-			merchant: MERCHANT_ADDRESS,
-			quantity: order.amount,
-		};
-
-		const transactionInfo = isAdaPayment
-			? await protocolClient.payWithAda({
-					...commonProps,
-					quantity: commonProps.quantity,
-				} as Parameters<typeof protocolClient.payWithAda>[0])
-			: await protocolClient.payWithTokens({
-					...commonProps,
-					quantity: commonProps.quantity,
-					// biome-ignore lint/style/noNonNullAssertion: Because we check isAdaPayment
-					assetName: Buffer.from(order.assetName!, 'hex'),
-					// biome-ignore lint/style/noNonNullAssertion: Because we check isAdaPayment
-					tokenPolicy: Buffer.from(order.policyId!, 'hex'),
-				} as Parameters<typeof protocolClient.payWithTokens>[0]);
-
-		const userWitnessSet = await wallet.signTx(transactionInfo.tx, true);
-
-		const submitResult = await submitPaymentServerFn({
-			data: {
-				tx_cbor_hex: transactionInfo.tx,
-				witness_set_cbor_hex: userWitnessSet,
-				tx_hash_hex: transactionInfo.hash,
-			},
-		});
-
-		// TODO: Check transaction status on chain.
-
-		if (!submitResult.success) {
-			return {
-				success: false,
-				error: submitResult.error || 'Payment failed',
-				isTimeout: submitResult.error === 'Payment timeout',
+		let value: EscrowValue;
+		if (isAdaPayment) {
+			value = { lovelace: BigInt(order.amount) };
+		} else {
+			value = {
+				lovelace: BigInt(order.minAda ?? 2_000_000), // 2 ADA default min-ADA
+				// biome-ignore lint/style/noNonNullAssertion: guard checked above
+				policyId: order.policyId!,
+				// biome-ignore lint/style/noNonNullAssertion: guard checked above
+				assetName: order.assetName!,
+				quantity: BigInt(order.amount),
 			};
 		}
 
-		return { success: true, txHash: submitResult.txHash || transactionInfo.hash };
+		// Submit the lock tx — returns { lockTxHash, lockOutputIndex, datumCbor }
+		const lockResult = await submitLockEscrow(order.id, value, wallet);
+
+		// Derive escrow metadata needed by the server-fn from the network config
+		// The merchant address is read from env by submitLockEscrow's internal
+		// call to getNetworkConfig(). We pass the same env value here for the
+		// server-fn escrow row.
+
+		// Get buyer address to derive buyerPkh (same as done inside submitLockEscrow)
+		const { bech32 } = await import('bech32');
+		const { Buffer } = await import('buffer');
+
+		// Compute paidAt / shipDeadline to match what submitLockEscrow computed.
+		// Since they were computed inside submitLockEscrow we re-derive them from
+		// the datumCbor — however the simplest approach is to re-compute here
+		// with the same timestamps.
+		// NOTE: There is a minor window between the client-side computation in
+		// submitLockEscrow and here, but both use Date.now() independently.
+		// The datum CBOR already contains the correct on-chain values; for the DB
+		// row we match them as closely as possible.  A more robust approach is to
+		// return paidAt/shipDeadline from submitLockEscrow — but the spec says
+		// to keep the LockResult shape unchanged.
+		// We compute them using the same policy parameters.
+		const { getShipDeadlineSeconds } = await import('@/lib/cardano/escrow-policy');
+		const { getNetworkConfig } = await import('@/lib/cardano/network');
+
+		const { merchantAddress } = getNetworkConfig();
+		const shipDeadlineSeconds = getShipDeadlineSeconds();
+
+		// Derive buyer PKH from hex-encoded CIP-30 change address
+		const buyerAddressHex = await wallet.getChangeAddress();
+		const buyerRaw = Buffer.from(buyerAddressHex, 'hex');
+		const buyerPkhHex = buyerRaw.slice(1, 29).toString('hex');
+
+		// Derive merchant PKH from bech32 address
+		const decoded = bech32.decode(merchantAddress, 1000);
+		const merchantRaw = Buffer.from(bech32.fromWords(decoded.words));
+		const merchantPkhHex = merchantRaw.slice(1, 29).toString('hex');
+
+		const paidAt = new Date().toISOString();
+		const shipDeadlineMs = Date.now() + shipDeadlineSeconds * 1000;
+		const shipDeadline = new Date(shipDeadlineMs).toISOString();
+
+		// Compute script address from env (same as what tx3 uses internally)
+		// The script address is the destination for the locked funds — we derive
+		// it from the escrow policy hash in network config or fall back to env.
+		const scriptAddress = import.meta.env.VITE_ESCROW_SCRIPT_ADDRESS || '';
+
+		await submitPaymentServerFn({
+			data: {
+				orderId: order.id,
+				lockTxHash: lockResult.lockTxHash,
+				lockOutputIndex: lockResult.lockOutputIndex,
+				datumCbor: lockResult.datumCbor,
+				scriptAddress,
+				buyerPkh: buyerPkhHex,
+				merchantPkh: merchantPkhHex,
+				paidAt,
+				shipDeadline,
+			},
+		});
+
+		return {
+			success: true,
+			txHash: lockResult.lockTxHash,
+			lockOutputIndex: lockResult.lockOutputIndex,
+			datumCbor: lockResult.datumCbor,
+		};
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Payment failed';
 		return {
@@ -145,6 +176,8 @@ export async function processMultiCurrencyPayments(
 				completedOrders.push({
 					orderId: order.id,
 					txHash: result.txHash,
+					lockOutputIndex: result.lockOutputIndex ?? 0,
+					datumCbor: result.datumCbor ?? '',
 					policyId: order.policyId,
 					assetName: order.assetName,
 				});

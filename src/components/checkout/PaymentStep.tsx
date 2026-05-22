@@ -222,11 +222,15 @@ function PaymentStepComponent({
 							<div className="flex items-start space-x-2">
 								<IconAlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
 								<div>
-									<p className="font-medium text-blue-800">Ready to Pay</p>
+									<p className="font-medium text-blue-800">Secure Escrow Payment</p>
 									<p className="text-sm text-blue-700">
+										Your payment will be held in a secure escrow until the merchant ships your order. Funds are only
+										released once delivery is confirmed — protecting both you and the seller.
+									</p>
+									<p className="text-sm text-blue-700 mt-1">
 										{hasMultiplePayments
-											? 'Click "Start Payments" to begin. You will need to approve each transaction in your wallet (60 seconds per transaction).'
-											: 'Click "Pay Now" to complete your payment. You have 60 seconds to approve the transaction in your wallet.'}
+											? 'Click "Start Payments" to begin. You will need to approve each transaction in your wallet.'
+											: 'Click "Start Payments" to lock your funds into escrow. You have 60 seconds to approve the transaction in your wallet.'}
 									</p>
 								</div>
 							</div>

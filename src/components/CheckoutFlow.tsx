@@ -239,14 +239,13 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 			});
 
 			if (result.allCompleted) {
-				// Update all orders to paid
+				// DB already updated by processCardanoPayment (escrow lock + submitPaymentServerFn).
+				// Update local state to reflect paid status.
 				for (const completed of result.completedOrders) {
-					const updatedOrder = await updateOrderStatusMutation.mutateAsync({
-						orderId: completed.orderId,
-						status: 'paid',
-						txHash: completed.txHash,
-					});
-					updateOrderInState(updatedOrder);
+					const order = orders.find(o => o.id === completed.orderId);
+					if (order) {
+						updateOrderInState({ ...order, status: 'paid', cardano_tx_hash: completed.txHash });
+					}
 				}
 
 				// Set success state
@@ -256,17 +255,15 @@ export function CheckoutFlow({ onComplete }: CheckoutFlowProps) {
 				onComplete?.(orders[0].id);
 			} else {
 				// Handle partial success
-				// Update completed orders
+				// Completed orders: DB already updated by processCardanoPayment.
 				for (const completed of result.completedOrders) {
-					const updatedOrder = await updateOrderStatusMutation.mutateAsync({
-						orderId: completed.orderId,
-						status: 'paid',
-						txHash: completed.txHash,
-					});
-					updateOrderInState(updatedOrder);
+					const order = orders.find(o => o.id === completed.orderId);
+					if (order) {
+						updateOrderInState({ ...order, status: 'paid', cardano_tx_hash: completed.txHash });
+					}
 				}
 
-				// Update failed orders
+				// Failed orders: mark as payment_failed in DB
 				for (const failed of result.failedOrders) {
 					const updatedOrder = await updateOrderStatusMutation.mutateAsync({
 						orderId: failed.orderId,
