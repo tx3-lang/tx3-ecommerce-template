@@ -6,7 +6,9 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, placeholder,
 }
 use config
-use escrow_types.{EscrowDatum, EscrowRedeemer, MarkShipped, PosixTime, Refund, Release}
+use escrow_types.{
+  EscrowDatum, EscrowRedeemer, MarkShipped, PosixTime, Refund, Release,
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -61,8 +63,7 @@ fn check_mark_shipped(
     }
 
   // 2. Merchant must have signed
-  let merchant_signed =
-    list.has(ctx.extra_signatories, datum.merchant)
+  let merchant_signed = list.has(ctx.extra_signatories, datum.merchant)
 
   // 3. shipped_at must be within the transaction validity range
   let time_valid = interval.contains(ctx.validity_range, shipped_at)
@@ -95,8 +96,7 @@ fn check_mark_shipped(
 
   let valid_output =
     when script_outputs is {
-      [o] ->
-        o.value == locked_value && o.datum == InlineDatum(expected_datum)
+      [o] -> o.value == locked_value && o.datum == InlineDatum(expected_datum)
       _ -> False
     }
 
@@ -120,8 +120,7 @@ fn check_release(datum: EscrowDatum, ctx: Transaction) -> Bool {
         }
 
       // 3. Merchant must have signed
-      let merchant_signed =
-        list.has(ctx.extra_signatories, datum.merchant)
+      let merchant_signed = list.has(ctx.extra_signatories, datum.merchant)
 
       time_valid && merchant_signed
     }
@@ -148,8 +147,7 @@ fn check_refund(datum: EscrowDatum, ctx: Transaction) -> Bool {
     }
 
   // 3. Buyer must have signed
-  let buyer_signed =
-    list.has(ctx.extra_signatories, datum.buyer)
+  let buyer_signed = list.has(ctx.extra_signatories, datum.buyer)
 
   is_pending && after_deadline && buyer_signed
 }
@@ -165,8 +163,7 @@ const buyer_vkh: ByteArray =
 const merchant_vkh: ByteArray =
   #"11223344112233441122334411223344112233441122334411223344"
 
-const order_id: ByteArray =
-  #"deadbeefdeadbeefdeadbeefdeadbeef"
+const order_id: ByteArray = #"deadbeefdeadbeefdeadbeefdeadbeef"
 
 const script_hash: ByteArray =
   #"cafecafecafecafecafecafecafecafecafecafecafecafecafecafe"
@@ -204,10 +201,7 @@ fn shipped_datum() -> EscrowDatum {
 }
 
 fn script_address() -> Address {
-  Address {
-    payment_credential: Script(script_hash),
-    stake_credential: None,
-  }
+  Address { payment_credential: Script(script_hash), stake_credential: None }
 }
 
 fn locked_value() {
@@ -215,7 +209,10 @@ fn locked_value() {
 }
 
 fn own_output_ref() -> OutputReference {
-  OutputReference { transaction_id: #"abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234", output_index: 0 }
+  OutputReference {
+    transaction_id: #"abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
+    output_index: 0,
+  }
 }
 
 fn make_script_input(datum_val: EscrowDatum) -> Input {
@@ -391,7 +388,10 @@ test release_success() {
       ..placeholder,
       inputs: [input],
       extra_signatories: [merchant_vkh],
-      validity_range: make_validity_range(release_valid_from_ms, release_valid_to_ms),
+      validity_range: make_validity_range(
+        release_valid_from_ms,
+        release_valid_to_ms,
+      ),
     }
 
   check_release(shipped_datum(), tx)
@@ -407,7 +407,10 @@ test release_before_grace_period() {
       ..placeholder,
       inputs: [input],
       extra_signatories: [merchant_vkh],
-      validity_range: make_validity_range(early_valid_from, grace_period_end_ms + 1_000_000),
+      validity_range: make_validity_range(
+        early_valid_from,
+        grace_period_end_ms + 1_000_000,
+      ),
     }
 
   !check_release(shipped_datum(), tx)
@@ -421,7 +424,10 @@ test release_pending_state() {
       ..placeholder,
       inputs: [input],
       extra_signatories: [merchant_vkh],
-      validity_range: make_validity_range(release_valid_from_ms, release_valid_to_ms),
+      validity_range: make_validity_range(
+        release_valid_from_ms,
+        release_valid_to_ms,
+      ),
     }
 
   !check_release(pending_datum(), tx)
@@ -436,7 +442,10 @@ test release_wrong_signer() {
       inputs: [input],
       // buyer signs, NOT merchant
       extra_signatories: [buyer_vkh],
-      validity_range: make_validity_range(release_valid_from_ms, release_valid_to_ms),
+      validity_range: make_validity_range(
+        release_valid_from_ms,
+        release_valid_to_ms,
+      ),
     }
 
   !check_release(shipped_datum(), tx)
@@ -459,7 +468,10 @@ test refund_success() {
       ..placeholder,
       inputs: [input],
       extra_signatories: [buyer_vkh],
-      validity_range: make_validity_range(refund_valid_from_ms, refund_valid_to_ms),
+      validity_range: make_validity_range(
+        refund_valid_from_ms,
+        refund_valid_to_ms,
+      ),
     }
 
   check_refund(pending_datum(), tx)
@@ -475,7 +487,10 @@ test refund_before_deadline() {
       ..placeholder,
       inputs: [input],
       extra_signatories: [buyer_vkh],
-      validity_range: make_validity_range(early_valid_from, ship_deadline_ms + 1_000_000),
+      validity_range: make_validity_range(
+        early_valid_from,
+        ship_deadline_ms + 1_000_000,
+      ),
     }
 
   !check_refund(pending_datum(), tx)
@@ -489,7 +504,10 @@ test refund_shipped_state() {
       ..placeholder,
       inputs: [input],
       extra_signatories: [buyer_vkh],
-      validity_range: make_validity_range(refund_valid_from_ms, refund_valid_to_ms),
+      validity_range: make_validity_range(
+        refund_valid_from_ms,
+        refund_valid_to_ms,
+      ),
     }
 
   !check_refund(shipped_datum(), tx)
@@ -504,7 +522,10 @@ test refund_wrong_signer() {
       inputs: [input],
       // merchant signs, NOT buyer
       extra_signatories: [merchant_vkh],
-      validity_range: make_validity_range(refund_valid_from_ms, refund_valid_to_ms),
+      validity_range: make_validity_range(
+        refund_valid_from_ms,
+        refund_valid_to_ms,
+      ),
     }
 
   !check_refund(pending_datum(), tx)

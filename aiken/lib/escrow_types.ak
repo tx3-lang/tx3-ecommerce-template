@@ -78,13 +78,12 @@ test shipped_datum_fields() {
 test redeemer_variants() {
   let mark_shipped = MarkShipped { shipped_at: 1_700_050_000_000 }
   let release = Release
-  let refund = Refund
 
+  // let refund = Refund
   when mark_shipped is {
     MarkShipped { shipped_at } -> {
       let variants_differ = Release != Refund
-      let release_not_mark_shipped =
-        release != MarkShipped { shipped_at: 0 }
+      let release_not_mark_shipped = release != MarkShipped { shipped_at: 0 }
       shipped_at == 1_700_050_000_000 && variants_differ && release_not_mark_shipped
     }
     _ -> False

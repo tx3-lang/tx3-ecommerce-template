@@ -1,10 +1,9 @@
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
-use cardano/assets.{PolicyId}
-use cardano/assets
-use cardano/transaction.{Transaction, placeholder}
 use badge_types.{BadgeRedeemer}
+use cardano/assets.{PolicyId}
+use cardano/transaction.{Transaction, placeholder}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -22,11 +21,9 @@ const badges_policy_id: ByteArray =
 const other_policy_id: ByteArray =
   #"a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
 
-const asset_a: ByteArray =
-  #"0001aabbccddaabbccddaabbccddaabbccdd"
+const asset_a: ByteArray = #"0001aabbccddaabbccddaabbccddaabbccdd"
 
-const asset_b: ByteArray =
-  #"0002aabbccddaabbccddaabbccddaabbccdd"
+const asset_b: ByteArray = #"0002aabbccddaabbccddaabbccddaabbccdd"
 
 // ---------------------------------------------------------------------------
 // Mint logic
@@ -37,14 +34,11 @@ fn check_mint(
   policy_id: PolicyId,
   self: Transaction,
 ) -> Bool {
-  let merchant_signed =
-    list.has(self.extra_signatories, merchant_pkh)
+  let merchant_signed = list.has(self.extra_signatories, merchant_pkh)
 
-  let tokens_for_policy =
-    assets.tokens(self.mint, policy_id)
+  let tokens_for_policy = assets.tokens(self.mint, policy_id)
 
-  let has_tokens =
-    !dict.is_empty(tokens_for_policy)
+  let has_tokens = !dict.is_empty(tokens_for_policy)
 
   let all_qty_one =
     tokens_for_policy
@@ -59,9 +53,10 @@ fn check_mint(
 // ---------------------------------------------------------------------------
 
 validator badges(merchant_pkh: VerificationKeyHash) {
-    mint(_redeemer: BadgeRedeemer, policy_id: PolicyId, self: Transaction) {
+  mint(_redeemer: BadgeRedeemer, policy_id: PolicyId, self: Transaction) {
     check_mint(merchant_pkh, policy_id, self)
   }
+
   else(_) {
     fail
   }
