@@ -94,3 +94,13 @@ export function getBadgesScriptCbor(): string {
 	}
 	return validator.compiledCode;
 }
+
+/**
+ * Returns the applied Plutus V3 script CBOR (hex string) with the merchant
+ * verification key hash encoded as the parameter.
+ *
+ * @param merchantPkhHex - 28-byte (56 hex chars) verification key hash
+ */
+export function getAppliedScriptCbor(merchantPkhHex: string): string {
+	return buildAppliedScript(merchantPkhHex).toString('hex');
+}
