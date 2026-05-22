@@ -33,7 +33,7 @@ validator escrow {
       MarkShipped { shipped_at } ->
         check_mark_shipped(escrow_datum, shipped_at, own_ref, ctx)
       Release -> check_release(escrow_datum, ctx)
-      Refund -> False
+      Refund -> check_refund(escrow_datum, ctx)
     }
   }
 
@@ -125,6 +125,32 @@ fn check_release(datum: EscrowDatum, ctx: Transaction) -> Bool {
       time_valid && merchant_signed
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Refund logic
+// ---------------------------------------------------------------------------
+
+fn check_refund(datum: EscrowDatum, ctx: Transaction) -> Bool {
+  // 1. Must be in Pending state (grace_period_end == None)
+  let is_pending =
+    when datum.grace_period_end is {
+      None -> True
+      Some(_) -> False
+    }
+
+  // 2. tx.valid_from must be >= ship_deadline
+  let after_deadline =
+    when ctx.validity_range.lower_bound.bound_type is {
+      Finite(from_time) -> from_time >= datum.ship_deadline
+      _ -> False
+    }
+
+  // 3. Buyer must have signed
+  let buyer_signed =
+    list.has(ctx.extra_signatories, datum.buyer)
+
+  is_pending && after_deadline && buyer_signed
 }
 
 // ---------------------------------------------------------------------------
@@ -414,4 +440,72 @@ test release_wrong_signer() {
     }
 
   !check_release(shipped_datum(), tx)
+}
+
+// ---------------------------------------------------------------------------
+// Refund tests
+// ---------------------------------------------------------------------------
+
+// A valid_from time that is >= ship_deadline (buyer can claim refund)
+const refund_valid_from_ms: Int = 1_700_604_900_000
+
+const refund_valid_to_ms: Int = 1_700_605_000_000
+
+/// refund_success: Pending UTxO + Refund + buyer sig + valid_from >= ship_deadline → valid.
+test refund_success() {
+  let input = make_script_input(pending_datum())
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [input],
+      extra_signatories: [buyer_vkh],
+      validity_range: make_validity_range(refund_valid_from_ms, refund_valid_to_ms),
+    }
+
+  check_refund(pending_datum(), tx)
+}
+
+/// refund_before_deadline: valid_from < ship_deadline → invalid.
+test refund_before_deadline() {
+  // valid_from is 1 ms before ship_deadline
+  let early_valid_from = ship_deadline_ms - 1
+  let input = make_script_input(pending_datum())
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [input],
+      extra_signatories: [buyer_vkh],
+      validity_range: make_validity_range(early_valid_from, ship_deadline_ms + 1_000_000),
+    }
+
+  !check_refund(pending_datum(), tx)
+}
+
+/// refund_shipped_state: Input in Shipped (grace_period_end=Some) + Refund → invalid.
+test refund_shipped_state() {
+  let input = make_script_input(shipped_datum())
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [input],
+      extra_signatories: [buyer_vkh],
+      validity_range: make_validity_range(refund_valid_from_ms, refund_valid_to_ms),
+    }
+
+  !check_refund(shipped_datum(), tx)
+}
+
+/// refund_wrong_signer: Merchant signs Refund → invalid.
+test refund_wrong_signer() {
+  let input = make_script_input(pending_datum())
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [input],
+      // merchant signs, NOT buyer
+      extra_signatories: [merchant_vkh],
+      validity_range: make_validity_range(refund_valid_from_ms, refund_valid_to_ms),
+    }
+
+  !check_refund(pending_datum(), tx)
 }
