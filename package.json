@@ -13,7 +13,8 @@
     "tslint": "tsc --noEmit",
     "mark-shipped": "tsx scripts/mark-order-shipped.ts",
     "mark-completed": "tsx scripts/mark-order-completed.ts",
-    "cancel-order": "tsx scripts/cancel-order.ts"
+    "cancel-order": "tsx scripts/cancel-order.ts",
+    "reconcile-events": "tsx scripts/reconcile-events.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",

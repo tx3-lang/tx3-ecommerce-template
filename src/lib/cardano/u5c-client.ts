@@ -15,13 +15,13 @@
  *   - BytesEnvelope now uses `contentType: "hex"` instead of `encoding: "hex"`.
  */
 
-import type { ResolveParams, SubmitParams, SubmitResponse, TxEnvelope } from 'tx3-sdk/trp';
+import type { CheckStatusResponse, ResolveParams, SubmitParams, SubmitResponse, TxEnvelope } from 'tx3-sdk/trp';
 import { TrpClient } from 'tx3-sdk/trp';
 import type { NetworkConfig } from './network.js';
 import { getNetworkConfig } from './network.js';
 
 // Re-export SDK types so callers can reference them without importing tx3-sdk directly
-export type { ResolveParams, SubmitParams, SubmitResponse, TxEnvelope };
+export type { CheckStatusResponse, ResolveParams, SubmitParams, SubmitResponse, TxEnvelope };
 
 /**
  * Typed error that wraps any network / transport failure from the TRP Client.
@@ -53,6 +53,12 @@ export interface U5cClient {
 	 * Forwards directly to TrpClient.submit().
 	 */
 	submit(params: SubmitParams): Promise<SubmitResponse>;
+
+	/**
+	 * Check the confirmation status of one or more transaction hashes.
+	 * Forwards directly to TrpClient.checkStatus().
+	 */
+	checkStatus(hashes: string[]): Promise<CheckStatusResponse>;
 }
 
 /**
@@ -79,6 +85,14 @@ export function createU5cClient(config?: NetworkConfig): U5cClient {
 				return await inner.submit(params);
 			} catch (err) {
 				throw new ChainUnavailable(`TRP submit failed: ${err instanceof Error ? err.message : String(err)}`, err);
+			}
+		},
+
+		async checkStatus(hashes: string[]): Promise<CheckStatusResponse> {
+			try {
+				return await inner.checkStatus(hashes);
+			} catch (err) {
+				throw new ChainUnavailable(`TRP checkStatus failed: ${err instanceof Error ? err.message : String(err)}`, err);
 			}
 		},
 	};

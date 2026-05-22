@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Shared mock functions — set up before vi.mock so the factory closure captures them
 const mockResolve = vi.fn();
 const mockSubmit = vi.fn();
+const mockCheckStatus = vi.fn();
 const mockClientConstructor = vi.fn();
 
 vi.mock('tx3-sdk/trp', () => {
@@ -20,7 +21,7 @@ vi.mock('tx3-sdk/trp', () => {
 	// the shared mock fns.
 	function TrpClient(options: unknown) {
 		mockClientConstructor(options);
-		return { resolve: mockResolve, submit: mockSubmit };
+		return { resolve: mockResolve, submit: mockSubmit, checkStatus: mockCheckStatus };
 	}
 
 	return {
@@ -112,6 +113,44 @@ describe('createU5cClient', () => {
 			let caught: unknown;
 			try {
 				await client.submit(FAKE_SUBMIT_PARAMS);
+			} catch (err) {
+				caught = err;
+			}
+
+			expect(caught).toBeInstanceOf(ChainUnavailable);
+			expect((caught as InstanceType<typeof ChainUnavailable>).cause).toBe(originalError);
+		});
+	});
+
+	describe('checkStatus', () => {
+		const FAKE_HASHES = ['abc123', 'deadbeef'];
+		const FAKE_CHECK_RESPONSE = {
+			statuses: {
+				abc123: { stage: 'confirmed', confirmations: 10, nonConfirmations: 0 },
+				deadbeef: { stage: 'pending', confirmations: 0, nonConfirmations: 1 },
+			},
+		};
+
+		it('forwards hashes to TRP Client.checkStatus and returns its result', async () => {
+			mockCheckStatus.mockResolvedValueOnce(FAKE_CHECK_RESPONSE);
+
+			const client = createU5cClient(STUB_CONFIG);
+			const result = await client.checkStatus(FAKE_HASHES);
+
+			expect(mockCheckStatus).toHaveBeenCalledOnce();
+			expect(mockCheckStatus).toHaveBeenCalledWith(FAKE_HASHES);
+			expect(result).toEqual(FAKE_CHECK_RESPONSE);
+		});
+
+		it('wraps a checkStatus transport error in ChainUnavailable with the original cause', async () => {
+			const originalError = new Error('chain unreachable');
+			mockCheckStatus.mockRejectedValueOnce(originalError);
+
+			const client = createU5cClient(STUB_CONFIG);
+
+			let caught: unknown;
+			try {
+				await client.checkStatus(FAKE_HASHES);
 			} catch (err) {
 				caught = err;
 			}
