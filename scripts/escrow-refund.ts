@@ -32,12 +32,11 @@
 import { parseArgs } from 'node:util';
 
 import { ed25519 } from '@noble/curves/ed25519.js';
-import { blake2b } from '@noble/hashes/blake2.js';
 import { createClient } from '@supabase/supabase-js';
 import { Buffer } from 'buffer';
-import { encode as cborEncode, decode as cborDecode } from 'cbor-x';
 
 import { submitRefundEscrow } from '@/lib/cardano/escrow';
+import type { BuyerSigner } from '@/lib/cardano/escrow';
 import { getNetworkConfig } from '@/lib/cardano/network';
 import { insertOrderEvent } from '@/server-fns/order-events';
 
@@ -75,17 +74,24 @@ function getServerSupabase() {
 // ---------------------------------------------------------------------------
 // Buyer signer factory
 //
-// Creates a minimal CardanoWalletAPI stub from a hex-encoded Ed25519 private key.
-// signTx() receives the transaction CBOR hex, extracts the transaction body hash,
-// signs it with Ed25519, and returns a minimal CIP-30 witness set CBOR hex.
+// Creates a BuyerSigner from a hex-encoded Ed25519 private key.
+// signTxBodyHash() receives the pre-computed tx body hash (hex) from the
+// tx3-sdk envelope and signs it directly with Ed25519.
 //
-// Witness set CBOR structure (CIP-30):
-//   map { 0: [[vkeyBytes, signatureBytes]] }
+// This avoids the CBOR round-trip bug in the previous implementation, where
+// the full tx CBOR was decoded and the tx body re-encoded before hashing.
+// CBOR decode+re-encode is not guaranteed to produce byte-identical bytes
+// (map key ordering, integer encoding), so the re-encoded hash may differ from
+// the original tx body hash that the chain verifies against.
 //
-// This is the test/demo signer — production should use the buyer's browser wallet.
+// By signing envelope.hash directly, we guarantee the signature matches what
+// the chain will verify.
+//
+// This is the test/demo signer — production refunds should use the buyer's
+// browser wallet via a CIP-30 adapter.
 // ---------------------------------------------------------------------------
 
-function buildBuyerSigner(buyerKeyHex: string): CardanoWalletAPI {
+function buildBuyerSigner(buyerKeyHex: string): BuyerSigner {
 	if (!/^[0-9a-fA-F]{64}$/.test(buyerKeyHex)) {
 		throw new Error('INVALID_ARG: --buyer-key must be 64 hex chars (32-byte Ed25519 private key)');
 	}
@@ -94,52 +100,17 @@ function buildBuyerSigner(buyerKeyHex: string): CardanoWalletAPI {
 	const publicKeyBytes = Buffer.from(ed25519.getPublicKey(privateKeyBytes));
 
 	return {
-		// Only signTx is used by submitRefundEscrow
-		signTx: async (txCbor: string, _partialSign?: boolean): Promise<string> => {
-			// Decode the transaction to extract the tx body hash.
-			// A Cardano transaction is encoded as: [txBody, witnessSet, valid, auxiliaryData]
-			// We need the hash of the tx body bytes (not the full tx).
-			// tx3-sdk passes the transaction envelope's tx field, which is the tx CBOR hex.
-			// The envelope.hash field is the tx body hash — but we don't have it here.
-			// Instead, we need to derive it from the tx CBOR.
-			//
-			// Cardano transaction CBOR: array of [txBody, witnessSet, isValid, auxiliaryData]
-			// txBodyHash = blake2b_256(txBodyBytes)
-			//
-			// However, tx3-sdk provides the tx body hash via envelope.hash before calling signTx.
-			// We use a simpler approach: sign the blake2b-256 hash of the raw tx body bytes.
-			//
-			// The tx CBOR is an array; index 0 is the tx body map.
-			// We re-encode the tx body to get its canonical CBOR bytes, then hash them.
-			const txBytes = Buffer.from(txCbor, 'hex');
-			const decoded = cborDecode(txBytes) as unknown[];
-			const txBodyBytes = Buffer.from(cborEncode(decoded[0]));
-
-			// blake2b-256 hash of the tx body
-			const txHashBytes = blake2b(txBodyBytes, { dkLen: 32 });
-
-			// Sign with Ed25519
+		signTxBodyHash: async (txBodyHash: string): Promise<{ vkey: string; signature: string }> => {
+			// Sign the tx body hash directly — no CBOR decode/re-encode needed.
+			// envelope.hash is already the blake2b-256 hash of the original tx body bytes.
+			const txHashBytes = Buffer.from(txBodyHash, 'hex');
 			const signatureBytes = Buffer.from(ed25519.sign(txHashBytes, privateKeyBytes));
 
-			// Encode witness set: map { 0: [[publicKey, signature]] }
-			// CIP-30 returns CBOR hex of: { 0: [[vkeyBytes(32), sigBytes(64)]] }
-			const witnessSet = new Map([[0, [[publicKeyBytes, signatureBytes]]]]);
-			const witnessSetCbor = Buffer.from(cborEncode(witnessSet)).toString('hex');
-
-			return witnessSetCbor;
+			return {
+				vkey: publicKeyBytes.toString('hex'),
+				signature: signatureBytes.toString('hex'),
+			};
 		},
-
-		// Stub implementations for the rest of the CardanoWalletAPI interface
-		getNetworkId: async () => 0 as NetworkId,
-		getUtxos: async () => undefined,
-		getBalance: async () => '0',
-		getCollateral: async () => null,
-		getUsedAddresses: async () => [],
-		getUnusedAddresses: async () => '',
-		getChangeAddress: async () => '',
-		getRewardAddresses: async () => '',
-		signData: async () => '',
-		submitTx: async () => '',
 	};
 }
 

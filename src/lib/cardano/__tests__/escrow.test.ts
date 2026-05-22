@@ -12,6 +12,7 @@
 
 import { decode as cborDecode } from 'cbor-x';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BuyerSigner } from '../escrow.js';
 
 // ---------------------------------------------------------------------------
 // Shared mock fns — declared before vi.mock() so factories can close over them
@@ -139,7 +140,7 @@ vi.mock('../network.js', () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Stub buyer CIP-30 signer
+// Stub buyer CIP-30 signer (used for submitLockEscrow tests only)
 // ---------------------------------------------------------------------------
 
 // buyer_pkh bytes: 28 bytes = 56 hex chars
@@ -163,6 +164,20 @@ const STUB_BUYER_SIGNER: CardanoWalletAPI = {
 	signTx: mockSignTx,
 	signData: vi.fn(),
 	submitTx: vi.fn(),
+};
+
+// ---------------------------------------------------------------------------
+// Stub BuyerSigner (used for submitRefundEscrow tests)
+// ---------------------------------------------------------------------------
+
+const STUB_VKEY = 'aabbcc001122334455667788990011223344556677889900112233aabb';
+const STUB_SIGNATURE =
+	'ddeeff00112233445566778899aabbccddeeff001122334455667788990011223344556677889900112233445566778899aabbccddeeff001122334455667788';
+
+const mockSignTxBodyHash = vi.fn().mockResolvedValue({ vkey: STUB_VKEY, signature: STUB_SIGNATURE });
+
+const STUB_BUYER_HASH_SIGNER: BuyerSigner = {
+	signTxBodyHash: mockSignTxBodyHash,
 };
 
 // ---------------------------------------------------------------------------
@@ -199,6 +214,7 @@ beforeEach(() => {
 	mockSign.mockReturnValue(STUB_WITNESSES);
 	mockGetMerchantSigner.mockReturnValue({ sign: mockSign });
 	mockGetEscrowByOrderId.mockResolvedValue(STUB_ESCROW);
+	mockSignTxBodyHash.mockResolvedValue({ vkey: STUB_VKEY, signature: STUB_SIGNATURE });
 });
 
 // ---------------------------------------------------------------------------
@@ -753,7 +769,7 @@ describe('submitReleaseEscrow', () => {
 describe('submitRefundEscrow', () => {
 	describe('escrow lookup', () => {
 		it('calls getEscrowByOrderId with the provided orderId', async () => {
-			await submitRefundEscrow('order-ref-1', STUB_BUYER_SIGNER);
+			await submitRefundEscrow('order-ref-1', STUB_BUYER_HASH_SIGNER);
 
 			expect(mockGetEscrowByOrderId).toHaveBeenCalledOnce();
 			expect(mockGetEscrowByOrderId).toHaveBeenCalledWith('order-ref-1');
@@ -762,13 +778,13 @@ describe('submitRefundEscrow', () => {
 		it('throws if getEscrowByOrderId returns null', async () => {
 			mockGetEscrowByOrderId.mockResolvedValueOnce(null);
 
-			await expect(submitRefundEscrow('order-ref-missing', STUB_BUYER_SIGNER)).rejects.toThrow();
+			await expect(submitRefundEscrow('order-ref-missing', STUB_BUYER_HASH_SIGNER)).rejects.toThrow();
 		});
 	});
 
 	describe('protocol call arguments', () => {
 		it('calls client.refundEscrow (not other tx methods)', async () => {
-			await submitRefundEscrow('order-ref-2', STUB_BUYER_SIGNER);
+			await submitRefundEscrow('order-ref-2', STUB_BUYER_HASH_SIGNER);
 
 			expect(mockRefundEscrow).toHaveBeenCalledOnce();
 			expect(mockLockEscrowAda).not.toHaveBeenCalled();
@@ -777,7 +793,7 @@ describe('submitRefundEscrow', () => {
 		});
 
 		it('passes escrowUtxo with the utxo_tx_hash and utxo_output_index from the escrow row', async () => {
-			await submitRefundEscrow('order-ref-3', STUB_BUYER_SIGNER);
+			await submitRefundEscrow('order-ref-3', STUB_BUYER_HASH_SIGNER);
 
 			const args = mockRefundEscrow.mock.calls[0][0] as Record<string, unknown>;
 			expect(args.escrowUtxo).toMatchObject({
@@ -787,28 +803,50 @@ describe('submitRefundEscrow', () => {
 		});
 	});
 
-	describe('signing — buyer CIP-30 signer', () => {
-		it('signs with the buyer CIP-30 signer (not the merchant signer)', async () => {
-			await submitRefundEscrow('order-ref-sign', STUB_BUYER_SIGNER);
+	describe('signing — buyer hash signer', () => {
+		it('signs the tx body hash with the buyer hash signer (not CIP-30 signTx, not merchant signer)', async () => {
+			await submitRefundEscrow('order-ref-sign', STUB_BUYER_HASH_SIGNER);
 
-			expect(mockSignTx).toHaveBeenCalledOnce();
-			expect(mockSignTx).toHaveBeenCalledWith(STUB_ENVELOPE.tx, true);
-			// Backend signer must NOT be called
+			// signTxBodyHash must be called with the envelope hash
+			expect(mockSignTxBodyHash).toHaveBeenCalledOnce();
+			expect(mockSignTxBodyHash).toHaveBeenCalledWith(STUB_ENVELOPE.hash);
+			// CIP-30 signTx must NOT be called
+			expect(mockSignTx).not.toHaveBeenCalled();
+			// Backend merchant signer must NOT be called
 			expect(mockSign).not.toHaveBeenCalled();
 		});
 
-		it('calls wallet.getChangeAddress() is NOT required (refund just signs)', async () => {
-			// refundEscrow doesn't need to derive buyer PKH — it just signs the tx
-			await submitRefundEscrow('order-ref-no-addr', STUB_BUYER_SIGNER);
+		it('does NOT call getChangeAddress (refund just signs the hash)', async () => {
+			// refundEscrow doesn't need to derive buyer PKH — it just signs the hash
+			await submitRefundEscrow('order-ref-no-addr', STUB_BUYER_HASH_SIGNER);
 
-			// The key assertion: mockSignTx was called (signing happened)
-			expect(mockSignTx).toHaveBeenCalledOnce();
+			// CIP-30 getChangeAddress must NOT be called
+			expect(mockGetChangeAddress).not.toHaveBeenCalled();
+		});
+
+		it('submits with a vkey witness built from the signer output', async () => {
+			await submitRefundEscrow('order-ref-witnesses', STUB_BUYER_HASH_SIGNER);
+
+			expect(mockSubmit).toHaveBeenCalledOnce();
+			const submitArgs = mockSubmit.mock.calls[0][0] as {
+				witnesses: {
+					type: string;
+					key: { content: string; contentType: string };
+					signature: { content: string; contentType: string };
+				}[];
+			};
+			expect(submitArgs.witnesses).toHaveLength(1);
+			expect(submitArgs.witnesses[0]).toMatchObject({
+				type: 'vkey',
+				key: { content: STUB_VKEY, contentType: 'hex' },
+				signature: { content: STUB_SIGNATURE, contentType: 'hex' },
+			});
 		});
 	});
 
 	describe('return value', () => {
 		it('returns { txHash } equal to the envelope hash', async () => {
-			const result = await submitRefundEscrow('order-ref-return', STUB_BUYER_SIGNER);
+			const result = await submitRefundEscrow('order-ref-return', STUB_BUYER_HASH_SIGNER);
 
 			expect(result).toEqual({ txHash: STUB_ENVELOPE.hash });
 		});
@@ -819,7 +857,7 @@ describe('submitRefundEscrow', () => {
 			const err = new Error('ChainUnavailable: refundEscrow failed');
 			mockRefundEscrow.mockRejectedValueOnce(err);
 
-			await expect(submitRefundEscrow('order-ref-err', STUB_BUYER_SIGNER)).rejects.toThrow(
+			await expect(submitRefundEscrow('order-ref-err', STUB_BUYER_HASH_SIGNER)).rejects.toThrow(
 				'ChainUnavailable: refundEscrow failed',
 			);
 		});

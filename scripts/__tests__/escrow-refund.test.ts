@@ -232,14 +232,14 @@ describe('escrow state validation', () => {
 // submitRefundEscrow call
 // ---------------------------------------------------------------------------
 describe('submitRefundEscrow', () => {
-	it('calls submitRefundEscrow with the orderId and a buyer signer', async () => {
+	it('calls submitRefundEscrow with the orderId and a BuyerSigner', async () => {
 		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX]);
 
 		expect(mockSubmitRefundEscrow).toHaveBeenCalledOnce();
 		expect(mockSubmitRefundEscrow).toHaveBeenCalledWith(
 			ORDER_ID,
-			// buyer signer is a CardanoWalletAPI object — check it has a signTx method
-			expect.objectContaining({ signTx: expect.any(Function) }),
+			// buyer signer is a BuyerSigner object — check it has a signTxBodyHash method
+			expect.objectContaining({ signTxBodyHash: expect.any(Function) }),
 		);
 	});
 });

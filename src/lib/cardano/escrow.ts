@@ -26,7 +26,7 @@ import { Buffer } from 'buffer';
 import { Tag as CborTag, encode as cborEncode } from 'cbor-x';
 
 import { decodeWitnessSet } from 'tx3-sdk/signer';
-import type { TxEnvelope } from 'tx3-sdk/trp';
+import type { TxEnvelope, TxWitness } from 'tx3-sdk/trp';
 import type { ProfileName } from '@/lib/tx3/protocol';
 import { Client } from '@/lib/tx3/protocol';
 
@@ -39,6 +39,25 @@ import { getMerchantSigner } from './signer.js';
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
+
+/**
+ * Minimal signer interface for buyer-driven escrow state transitions.
+ *
+ * Accepts the pre-computed tx body hash (hex) so implementations can sign
+ * the hash directly — without needing to CBOR-decode/re-encode the full tx.
+ * This avoids the CBOR round-trip bug where decode+re-encode may not produce
+ * byte-identical bytes, which would cause an invalid signature on-chain.
+ *
+ * The chain verifies signatures against the original tx body bytes hash,
+ * not a re-encoded version, so callers must sign `envelope.hash` directly.
+ */
+export interface BuyerSigner {
+	/**
+	 * Signs the tx body hash and returns a vkey witness.
+	 * @param txBodyHash - hex-encoded 32-byte tx body hash (blake2b-256)
+	 */
+	signTxBodyHash(txBodyHash: string): Promise<{ vkey: string; signature: string }>;
+}
 
 /** ADA-only value: just lovelace. */
 export interface AdaValue {
@@ -391,11 +410,15 @@ export async function submitReleaseEscrow(orderId: string): Promise<{ txHash: st
  *
  * 1. Read current escrow row.
  * 2. Build refundEscrow tx with escrowUtxo.
- * 3. Sign with the buyer CIP-30 signer (partial sign = true).
+ * 3. Sign the tx body hash with the buyer signer (hash-based, no CBOR round-trip).
  * 4. Submit.
  * 5. Return { txHash }.
+ *
+ * Uses `BuyerSigner.signTxBodyHash(envelope.hash)` so the buyer signs the
+ * pre-computed tx body hash directly — avoiding CBOR decode+re-encode which
+ * may not produce byte-identical bytes and would result in an invalid signature.
  */
-export async function submitRefundEscrow(orderId: string, buyerSigner: CardanoWalletAPI): Promise<{ txHash: string }> {
+export async function submitRefundEscrow(orderId: string, buyerSigner: BuyerSigner): Promise<{ txHash: string }> {
 	const escrow = await getEscrowByOrderId(orderId);
 	if (!escrow) {
 		throw new Error(`ESCROW_NOT_FOUND: order_id=${orderId}`);
@@ -410,9 +433,19 @@ export async function submitRefundEscrow(orderId: string, buyerSigner: CardanoWa
 		escrowUtxo,
 	} as Parameters<typeof client.refundEscrow>[0]);
 
-	// Sign with buyer's CIP-30 wallet (partial sign = true)
-	const witnessSetCborHex = await buyerSigner.signTx(envelope.tx, true);
-	const witnesses = decodeWitnessSet(witnessSetCborHex);
+	// Sign the pre-computed tx body hash directly — no CBOR decode/re-encode.
+	// The chain verifies against the original tx body bytes hash (envelope.hash),
+	// so we must sign that exact value.
+	const { vkey, signature } = await buyerSigner.signTxBodyHash(envelope.hash);
+
+	// Build the TxWitness array from the hex-encoded vkey and signature
+	const witnesses: TxWitness[] = [
+		{
+			type: 'vkey',
+			key: { content: vkey, contentType: 'hex' },
+			signature: { content: signature, contentType: 'hex' },
+		},
+	];
 
 	await client.submit({
 		tx: { content: envelope.tx, contentType: 'hex' },
