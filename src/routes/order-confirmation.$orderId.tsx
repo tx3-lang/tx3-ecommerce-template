@@ -2,6 +2,7 @@ import { IconCheck, IconClock, IconPackage, IconWallet } from '@tabler/icons-rea
 import { createFileRoute } from '@tanstack/react-router';
 
 // Components
+import { OrderTraceTimeline } from '@/components/order/OrderTraceTimeline';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -248,6 +249,14 @@ function OrderConfirmation() {
 						</div>
 					</div>
 				</div>
+
+				{/* On-chain Trace Timeline */}
+				{order.events && order.events.length > 0 && (
+					<div className="mt-6 bg-white rounded-lg shadow-sm p-6">
+						<h2 className="text-lg font-semibold mb-4">On-chain Activity</h2>
+						<OrderTraceTimeline events={order.events} />
+					</div>
+				)}
 
 				{/* Actions */}
 				<div className="mt-6 bg-white rounded-lg shadow-sm p-6">
