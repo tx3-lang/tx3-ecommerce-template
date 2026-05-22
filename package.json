@@ -6,7 +6,8 @@
     "dev": "vite dev --port 3000",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run --exclude 'tests/e2e/**'",
+    "test:e2e": "vitest run tests/e2e",
     "format": "biome format",
     "lint": "biome lint",
     "check": "biome check",
@@ -14,7 +15,11 @@
     "mark-shipped": "tsx scripts/mark-order-shipped.ts",
     "mark-completed": "tsx scripts/mark-order-completed.ts",
     "cancel-order": "tsx scripts/cancel-order.ts",
-    "reconcile-events": "tsx scripts/reconcile-events.ts"
+    "reconcile-events": "tsx scripts/reconcile-events.ts",
+    "reconcile-escrow": "tsx scripts/reconcile-escrow.ts",
+    "escrow-mark-shipped": "tsx scripts/escrow-mark-shipped.ts",
+    "escrow-release": "tsx scripts/escrow-release.ts",
+    "escrow-refund": "tsx scripts/escrow-refund.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",
