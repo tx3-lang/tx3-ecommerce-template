@@ -164,4 +164,19 @@ declare namespace Database {
 		created_at: string;
 		updated_at: string;
 	}
+
+	type BadgeKind = 'buyer_first_purchase' | 'seller_first_delivery';
+
+	interface IssuedBadge {
+		id: string;
+		kind: BadgeKind;
+		recipient_pkh: string;
+		recipient_address: string;
+		triggering_order_id: string;
+		policy_id: string;
+		asset_name_hex: string;
+		mint_tx_hash: string;
+		metadata: { [key: string]: JsonValue };
+		minted_at: string;
+	}
 }
