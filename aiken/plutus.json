@@ -12,6 +12,41 @@
   },
   "validators": [
     {
+      "title": "badges.badges.mint",
+      "redeemer": {
+        "title": "_redeemer",
+        "schema": {
+          "$ref": "#/definitions/badge_types~1BadgeRedeemer"
+        }
+      },
+      "parameters": [
+        {
+          "title": "merchant_pkh",
+          "schema": {
+            "$ref": "#/definitions/aiken~1crypto~1VerificationKeyHash"
+          }
+        }
+      ],
+      "compiledCode": "5901a3010100229800aba2aba1aba0aab9faab9eaab9dab9a9bae0024888888896600264653001300900198049805000cc0240092225980099b8748000c020dd500144c96600266e1d20003009375400915980098051baa004899912cc004c8cc004004dd618081808980898089808980898089808980898069baa0052259800800c528456600266e3cdd71808800805c528c4cc008008c04800500c201e8acc0066002b30010018a518a5040354a14a28052264660020026600600600444b30010018a518acc004cdc39bad30110014800a266004004602400314a0806100f452820148a50402844b30010018a5eb8226601c6018601e0026600400460200028068c96600266e1d2002300a375400314bd6f7b63044dd5980718059baa001402464660020026eacc038c03cc03cc03cc03cc02cdd5001912cc0040062980103d87a8000899192cc004cdc8802800c56600266e3c014006266e95200033010300e0024bd7045300103d87a80004031133004004301200340306eb8c030004c03c00500d45900b4590081bae300c3009375400516401c300900130043754013149a26cac80101",
+      "hash": "643aff72488e5a3c7b22806ce3db8f737b9181d3df968dad45f3d950"
+    },
+    {
+      "title": "badges.badges.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "parameters": [
+        {
+          "title": "merchant_pkh",
+          "schema": {
+            "$ref": "#/definitions/aiken~1crypto~1VerificationKeyHash"
+          }
+        }
+      ],
+      "compiledCode": "5901a3010100229800aba2aba1aba0aab9faab9eaab9dab9a9bae0024888888896600264653001300900198049805000cc0240092225980099b8748000c020dd500144c96600266e1d20003009375400915980098051baa004899912cc004c8cc004004dd618081808980898089808980898089808980898069baa0052259800800c528456600266e3cdd71808800805c528c4cc008008c04800500c201e8acc0066002b30010018a518a5040354a14a28052264660020026600600600444b30010018a518acc004cdc39bad30110014800a266004004602400314a0806100f452820148a50402844b30010018a5eb8226601c6018601e0026600400460200028068c96600266e1d2002300a375400314bd6f7b63044dd5980718059baa001402464660020026eacc038c03cc03cc03cc03cc02cdd5001912cc0040062980103d87a8000899192cc004cdc8802800c56600266e3c014006266e95200033010300e0024bd7045300103d87a80004031133004004301200340306eb8c030004c03c00500d45900b4590081bae300c3009375400516401c300900130043754013149a26cac80101",
+      "hash": "643aff72488e5a3c7b22806ce3db8f737b9181d3df968dad45f3d950"
+    },
+    {
       "title": "escrow.escrow.spend",
       "datum": {
         "title": "datum",
@@ -41,6 +76,22 @@
     "Data": {
       "title": "Data",
       "description": "Any Plutus data."
+    },
+    "aiken/crypto/VerificationKeyHash": {
+      "title": "VerificationKeyHash",
+      "dataType": "bytes"
+    },
+    "badge_types/BadgeRedeemer": {
+      "title": "BadgeRedeemer",
+      "description": "Action to perform when minting (or burning) a badge token.",
+      "anyOf": [
+        {
+          "title": "Mint",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": []
+        }
+      ]
     }
   }
 }
