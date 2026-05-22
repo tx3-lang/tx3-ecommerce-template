@@ -56,7 +56,7 @@ test pending_datum_fields() {
       ship_deadline: 1_700_604_800_000,
       grace_period_end: None,
     }
-  datum.paid_at == 1_700_000_000_000 && datum.grace_period_end == None
+  datum.paid_at == 1_700_000_000_000 && datum.grace_period_end == None && datum.order_id == #"deadbeefdeadbeefdeadbeefdeadbeef" && datum.ship_deadline == 1_700_604_800_000
 }
 
 /// Construct a Shipped datum (grace_period_end = Some(t)) and verify fields.
@@ -82,9 +82,10 @@ test redeemer_variants() {
 
   when mark_shipped is {
     MarkShipped { shipped_at } -> {
-      let r_ok = release == Release
-      let rf_ok = refund == Refund
-      shipped_at == 1_700_050_000_000 && r_ok && rf_ok
+      let variants_differ = Release != Refund
+      let release_not_mark_shipped =
+        release != MarkShipped { shipped_at: 0 }
+      shipped_at == 1_700_050_000_000 && variants_differ && release_not_mark_shipped
     }
     _ -> False
   }
