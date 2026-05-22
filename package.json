@@ -10,7 +10,8 @@
     "format": "biome format",
     "lint": "biome lint",
     "check": "biome check",
-    "tslint": "tsc --noEmit"
+    "tslint": "tsc --noEmit",
+    "mark-shipped": "tsx scripts/mark-order-shipped.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",
