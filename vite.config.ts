@@ -22,6 +22,10 @@ const config = defineConfig({
 	],
 	test: {
 		environment: 'node',
+		// Include both standard test files and e2e files.
+		// The 'test' npm script excludes tests/e2e/** via --exclude.
+		// The 'test:e2e' npm script filters to tests/e2e/**/*.e2e.ts.
+		include: ['**/*.{test,spec}.?(c|m)[jt]s?(x)', '**/*.e2e.ts'],
 		deps: {
 			optimizer: {
 				web: {
