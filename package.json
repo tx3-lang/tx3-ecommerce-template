@@ -10,8 +10,7 @@
     "format": "biome format",
     "lint": "biome lint",
     "check": "biome check",
-    "tslint": "tsc --noEmit",
-    "preinstall": "npx only-allow@1.2.2 pnpm"
+    "tslint": "tsc --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",
