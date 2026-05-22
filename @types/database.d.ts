@@ -44,6 +44,28 @@ declare namespace Database {
 		confirmed_at: string | null;
 	}
 
+	type EscrowStatus = 'pending' | 'shipped' | 'released' | 'refunded';
+
+	interface Escrow {
+		id: string;
+		order_id: string;
+		script_address: string;
+		utxo_tx_hash: string;
+		utxo_output_index: number;
+		status: EscrowStatus;
+		buyer_pkh: string;
+		merchant_pkh: string;
+		paid_at: string;
+		ship_deadline: string;
+		grace_period_end: string | null;
+		datum_cbor: string;
+		shipped_tx_hash: string | null;
+		release_tx_hash: string | null;
+		refund_tx_hash: string | null;
+		created_at: string;
+		updated_at: string;
+	}
+
 	interface Order {
 		id: string;
 		wallet_address: string;
@@ -63,6 +85,7 @@ declare namespace Database {
 		supported_tokens: SupportedToken | null;
 		shipping_info?: ShippingInfo | null;
 		events?: OrderEvent[] | null;
+		escrow?: Escrow | null;
 	}
 
 	interface ShippingInfo {

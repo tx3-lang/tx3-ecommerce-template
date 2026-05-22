@@ -38,7 +38,8 @@ export function useOrders(walletAddress?: string) {
 						payload,
 						submitted_at,
 						confirmed_at
-					)
+					),
+					escrow:escrows (*)
 				`)
 				.eq('wallet_address', walletAddress)
 				.is('deleted_at', null)
@@ -87,7 +88,8 @@ export function useOrder(orderId?: string, walletAddress?: string) {
 						payload,
 						submitted_at,
 						confirmed_at
-					)
+					),
+					escrow:escrows (*)
 				`)
 				.eq('id', orderId)
 				.eq('wallet_address', walletAddress)
