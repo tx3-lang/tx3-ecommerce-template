@@ -1,0 +1,23 @@
+name: Aiken Check
+
+on:
+  pull_request:
+    paths:
+      - 'aiken/**'
+
+jobs:
+  aiken-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Aiken
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf https://install.aiken-lang.org | sh
+          echo "$HOME/.aiken/bin" >> $GITHUB_PATH
+
+      - name: Run aiken check
+        working-directory: aiken
+        run: aiken check
