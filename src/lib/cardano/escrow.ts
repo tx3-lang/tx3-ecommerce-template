@@ -7,16 +7,20 @@
  *
  * Relies on:
  *   - getNetworkConfig()      — trpEndpoint, profile, merchantAddress
- *   - getScriptAddress()      — bech32 script address of the escrow validator
  *   - getShipDeadlineSeconds() — ship deadline timeout in seconds
  *   - CIP-30 buyer signer     — signs the resolved tx via wallet.signTx()
  *   - Client (codegen facade) — lockEscrowAda / lockEscrowTokens + submit
+ *
+ * Note: script address routing is handled internally by tx3 via the embedded
+ * script hash in the compiled protocol definition — no getScriptAddress() call
+ * is needed here.
  */
 
 import { bech32 } from 'bech32';
 import { Buffer } from 'buffer';
 import { Tag as CborTag, encode as cborEncode } from 'cbor-x';
 
+import { decodeWitnessSet } from 'tx3-sdk/signer';
 import type { TxEnvelope } from 'tx3-sdk/trp';
 import type { ProfileName } from '@/lib/tx3/protocol';
 import { Client } from '@/lib/tx3/protocol';
@@ -174,6 +178,8 @@ export async function submitLockEscrow(
 	// Resolve the appropriate lock tx based on value shape
 	let envelope: TxEnvelope;
 	if (isTokenValue(value)) {
+		// Safe for ADA (max 45B ADA = 4.5e16 lovelace < 2^53) and NFT quantities;
+		// large fungible token supplies may lose precision.
 		envelope = await client.lockEscrowTokens({
 			buyerPkh,
 			merchantPkh,
@@ -186,6 +192,8 @@ export async function submitLockEscrow(
 			tokenQuantity: Number(value.quantity),
 		} as Parameters<typeof client.lockEscrowTokens>[0]);
 	} else {
+		// Safe for ADA (max 45B ADA = 4.5e16 lovelace < 2^53) and NFT quantities;
+		// large fungible token supplies may lose precision.
 		envelope = await client.lockEscrowAda({
 			buyerPkh,
 			merchantPkh,
@@ -200,7 +208,6 @@ export async function submitLockEscrow(
 	const witnessSetCborHex = await buyerSigner.signTx(envelope.tx, true);
 
 	// Decode the CIP-30 witness set into TxWitness[] for TRP submission
-	const { decodeWitnessSet } = await import('tx3-sdk/signer');
 	const witnesses = decodeWitnessSet(witnessSetCborHex);
 
 	// Submit

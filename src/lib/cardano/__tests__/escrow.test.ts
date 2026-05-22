@@ -3,10 +3,12 @@
  *
  * Mocks at all external boundaries:
  *   - @/lib/tx3/protocol  — codegen Client (lockEscrowAda + lockEscrowTokens + submit)
- *   - ../escrow-policy.js — getScriptAddress + getShipDeadlineSeconds
+ *   - tx3-sdk/signer      — decodeWitnessSet
+ *   - ../escrow-policy.js — getShipDeadlineSeconds
  *   - ../network.js       — getNetworkConfig
  */
 
+import { decode as cborDecode } from 'cbor-x';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
@@ -35,6 +37,14 @@ vi.mock('@/lib/tx3/protocol', () => {
 
 	return { Client };
 });
+
+// ---------------------------------------------------------------------------
+// Mock: tx3-sdk/signer
+// ---------------------------------------------------------------------------
+
+vi.mock('tx3-sdk/signer', () => ({
+	decodeWitnessSet: vi.fn().mockReturnValue([]),
+}));
 
 // ---------------------------------------------------------------------------
 // Mock: escrow-policy
@@ -258,6 +268,33 @@ describe('submitLockEscrow — ADA value', () => {
 			expect(result.datumCbor.length).toBeGreaterThan(0);
 			// Must be a valid hex string
 			expect(result.datumCbor).toMatch(/^[0-9a-f]+$/);
+		});
+
+		it('datumCbor encodes as Plutus CONSTR tag 121 with None grace_period_end', async () => {
+			const result = await submitLockEscrow('order-datum-cbor', ADA_VALUE, STUB_BUYER_SIGNER);
+
+			// CBOR tag 121 (Plutus CONSTR 0) is encoded as d879 prefix
+			expect(result.datumCbor.startsWith('d879')).toBe(true);
+
+			// Decode and verify structural elements
+			const decoded = cborDecode(Buffer.from(result.datumCbor, 'hex')) as {
+				tag: number;
+				value: unknown[];
+			};
+			// Top-level must be tag 121
+			expect(decoded.tag).toBe(121);
+			// The datum has 6 fields: buyerPkh, merchantPkh, orderId, paidAt, shipDeadline, gracePeriodEnd
+			expect(Array.isArray(decoded.value)).toBe(true);
+			expect((decoded.value as unknown[]).length).toBe(6);
+
+			// grace_period_end (last field) must be OptionInt::None = CONSTR 121 with empty array
+			const gracePeriodEnd = (decoded.value as { tag: number; value: unknown[] }[])[5];
+			expect(gracePeriodEnd.tag).toBe(121);
+			expect(gracePeriodEnd.value).toEqual([]);
+
+			// The raw None encoding in hex must be d87980 (tag 121, empty array)
+			const noneHex = 'd87980';
+			expect(result.datumCbor).toContain(noneHex);
 		});
 	});
 
