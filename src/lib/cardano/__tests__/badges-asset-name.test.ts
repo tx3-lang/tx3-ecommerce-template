@@ -43,7 +43,7 @@ describe('deriveAssetName', () => {
 	});
 
 	it('rejects recipient_pkh that is too long', () => {
-		expect(() => deriveAssetName('buyer_first_purchase', BUYER_PKH + 'ff')).toThrow('INVALID_RECIPIENT_PKH');
+		expect(() => deriveAssetName('buyer_first_purchase', `${BUYER_PKH}ff`)).toThrow('INVALID_RECIPIENT_PKH');
 	});
 
 	it('rejects recipient_pkh with non-hex characters', () => {
