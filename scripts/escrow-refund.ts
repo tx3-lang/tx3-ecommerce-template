@@ -127,12 +127,14 @@ export async function main(args: string[]): Promise<EscrowRefundResult> {
 		options: {
 			'order-id': { type: 'string' },
 			'buyer-key': { type: 'string' },
+			'buyer-address': { type: 'string' },
 		},
 		strict: true,
 	});
 
 	const orderId = values['order-id'];
 	const buyerKeyHex = values['buyer-key'];
+	const buyerAddress = values['buyer-address'];
 
 	if (!orderId) {
 		throw new Error('MISSING_ARG: --order-id is required');
@@ -140,6 +142,10 @@ export async function main(args: string[]): Promise<EscrowRefundResult> {
 
 	if (!buyerKeyHex) {
 		throw new Error('MISSING_ARG: --buyer-key is required (hex-encoded Ed25519 private key for milestone-mode)');
+	}
+
+	if (!buyerAddress) {
+		throw new Error('MISSING_ARG: --buyer-address is required (bech32 address of the buyer wallet)');
 	}
 
 	// -----------------------------------------------------------------------
@@ -186,7 +192,7 @@ export async function main(args: string[]): Promise<EscrowRefundResult> {
 	// Step 4: Submit on-chain refund_escrow transaction BEFORE DB writes.
 	//   A chain failure here prevents all DB changes.
 	// -----------------------------------------------------------------------
-	const result = await submitRefundEscrow(orderId, buyerSigner);
+	const result = await submitRefundEscrow(orderId, buyerSigner, buyerAddress);
 
 	// -----------------------------------------------------------------------
 	// Step 5: Update escrows row

@@ -59,14 +59,21 @@ vi.mock('tx3-sdk/signer', () => ({
 // Mock: escrow-policy
 // ---------------------------------------------------------------------------
 
+const STUB_SCRIPT_REF_UTXO = {
+	txHash: '292e5ad99fde33d00ba1b5a7dee32270ef42068f792710071f38d385f5ff9d91',
+	outputIndex: 1,
+};
+
 const mockGetScriptAddress = vi.fn().mockReturnValue('addr_test1scriptaddr');
 const mockGetShipDeadlineSeconds = vi.fn().mockReturnValue(2592000);
 const mockGetGracePeriodSeconds = vi.fn().mockReturnValue(1209600);
+const mockGetScriptRefUtxo = vi.fn().mockReturnValue(STUB_SCRIPT_REF_UTXO);
 
 vi.mock('../escrow-policy.js', () => ({
 	getScriptAddress: mockGetScriptAddress,
 	getShipDeadlineSeconds: mockGetShipDeadlineSeconds,
 	getGracePeriodSeconds: mockGetGracePeriodSeconds,
+	getScriptRefUtxo: mockGetScriptRefUtxo,
 }));
 
 // ---------------------------------------------------------------------------
@@ -180,6 +187,10 @@ const STUB_BUYER_HASH_SIGNER: BuyerSigner = {
 	signTxBodyHash: mockSignTxBodyHash,
 };
 
+// Bech32 form of STUB_BUYER_ADDR_HEX (testnet enterprise), used as the Buyer
+// party when calling submitRefundEscrow.
+const STUB_BUYER_BECH32 = 'addr_test1vqyqxqzqgxqyqyqgxqyqyqgxqyqyqgxqyqyqgxqyqgxq8zsh3w';
+
 // ---------------------------------------------------------------------------
 // Stub return values for protocol calls
 // ---------------------------------------------------------------------------
@@ -232,29 +243,28 @@ describe('submitLockEscrow — ADA value', () => {
 			expect(mockLockEscrowTokens).not.toHaveBeenCalled();
 		});
 
-		it('passes buyerPkh derived from the CIP-30 change address', async () => {
+		it('passes buyer_pkh as a hex string derived from the CIP-30 change address', async () => {
 			await submitLockEscrow('order-ada-pkh', ADA_VALUE, STUB_BUYER_SIGNER);
 
 			const args = mockLockEscrowAda.mock.calls[0][0] as Record<string, unknown>;
-			// buyerPkh must be a Buffer/Uint8Array of 28 bytes matching STUB_BUYER_PKH_HEX
-			expect(args.buyerPkh).toBeInstanceOf(Buffer);
-			expect((args.buyerPkh as Buffer).toString('hex')).toBe(STUB_BUYER_PKH_HEX);
+			// buyer_pkh must be a 56-hex-char string matching STUB_BUYER_PKH_HEX
+			expect(args.buyer_pkh).toBe(STUB_BUYER_PKH_HEX);
 		});
 
-		it('passes merchantPkh derived from the merchant address in network config', async () => {
+		it('passes merchant_pkh as a hex string derived from the merchant address', async () => {
 			await submitLockEscrow('order-ada-merchant', ADA_VALUE, STUB_BUYER_SIGNER);
 
 			const args = mockLockEscrowAda.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.merchantPkh).toBeInstanceOf(Buffer);
+			expect(typeof args.merchant_pkh).toBe('string');
+			expect(args.merchant_pkh as string).toMatch(/^[0-9a-f]{56}$/);
 		});
 
-		it('passes orderId as bytes (UTF-8 encoded)', async () => {
+		it('passes order_id as a hex string of the UTF-8 bytes', async () => {
 			const orderId = 'order-utf8-test';
 			await submitLockEscrow(orderId, ADA_VALUE, STUB_BUYER_SIGNER);
 
 			const args = mockLockEscrowAda.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.orderId).toBeInstanceOf(Buffer);
-			expect((args.orderId as Buffer).toString('utf8')).toBe(orderId);
+			expect(args.order_id).toBe(Buffer.from(orderId, 'utf8').toString('hex'));
 		});
 
 		it('passes paidAt as current Unix timestamp in milliseconds (within 2s window)', async () => {
@@ -263,9 +273,9 @@ describe('submitLockEscrow — ADA value', () => {
 			const after = Date.now();
 
 			const args = mockLockEscrowAda.mock.calls[0][0] as Record<string, unknown>;
-			expect(typeof args.paidAt).toBe('number');
-			expect(args.paidAt as number).toBeGreaterThanOrEqual(before);
-			expect(args.paidAt as number).toBeLessThanOrEqual(after);
+			expect(typeof args.paid_at).toBe('number');
+			expect(args.paid_at as number).toBeGreaterThanOrEqual(before);
+			expect(args.paid_at as number).toBeLessThanOrEqual(after);
 		});
 
 		it('passes shipDeadline as paidAt + shipDeadlineSeconds * 1000', async () => {
@@ -277,8 +287,8 @@ describe('submitLockEscrow — ADA value', () => {
 			const after = Date.now();
 
 			const args = mockLockEscrowAda.mock.calls[0][0] as Record<string, unknown>;
-			const paidAt = args.paidAt as number;
-			const shipDeadline = args.shipDeadline as number;
+			const paidAt = args.paid_at as number;
+			const shipDeadline = args.ship_deadline as number;
 
 			expect(shipDeadline).toBeGreaterThanOrEqual(before + shipDeadlineSecs * 1000);
 			expect(shipDeadline).toBeLessThanOrEqual(after + shipDeadlineSecs * 1000);
@@ -297,7 +307,8 @@ describe('submitLockEscrow — ADA value', () => {
 		it('constructs Client with the endpoint and profile from network config', async () => {
 			await submitLockEscrow('order-client', ADA_VALUE, STUB_BUYER_SIGNER);
 
-			expect(mockClientConstructor).toHaveBeenCalledOnce();
+			// Two Client instances: one for the prepare/resolve step, one for submit.
+			expect(mockClientConstructor).toHaveBeenCalledTimes(2);
 			expect(mockClientConstructor).toHaveBeenCalledWith({ endpoint: STUB_CONFIG.trpEndpoint }, STUB_CONFIG.profile);
 		});
 	});
@@ -442,7 +453,6 @@ describe('submitLockEscrow — ADA value', () => {
 
 describe('submitLockEscrow — Token value', () => {
 	const TOKEN_VALUE = {
-		lovelace: 2_000_000n,
 		policyId: 'aabbccddeeff0011223344556677889900aabbccddeeff0011223344',
 		assetName: '4d794e4654',
 		quantity: 1n,
@@ -456,28 +466,26 @@ describe('submitLockEscrow — Token value', () => {
 			expect(mockLockEscrowAda).not.toHaveBeenCalled();
 		});
 
-		it('passes tokenPolicy and assetName as Buffers', async () => {
+		it('passes token_policy and asset_name as hex strings (TRP wire format)', async () => {
 			await submitLockEscrow('order-token-policy', TOKEN_VALUE, STUB_BUYER_SIGNER);
 
 			const args = mockLockEscrowTokens.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.tokenPolicy).toBeInstanceOf(Buffer);
-			expect((args.tokenPolicy as Buffer).toString('hex')).toBe(TOKEN_VALUE.policyId);
-			expect(args.assetName).toBeInstanceOf(Buffer);
-			expect((args.assetName as Buffer).toString('hex')).toBe(TOKEN_VALUE.assetName);
+			expect(args.token_policy).toBe(TOKEN_VALUE.policyId);
+			expect(args.asset_name).toBe(TOKEN_VALUE.assetName);
 		});
 
 		it('passes tokenQuantity from the value', async () => {
 			await submitLockEscrow('order-token-qty', TOKEN_VALUE, STUB_BUYER_SIGNER);
 
 			const args = mockLockEscrowTokens.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.tokenQuantity).toBe(Number(TOKEN_VALUE.quantity));
+			expect(args.token_quantity).toBe(Number(TOKEN_VALUE.quantity));
 		});
 
-		it('passes minAda from the lovelace field', async () => {
-			await submitLockEscrow('order-token-ada', TOKEN_VALUE, STUB_BUYER_SIGNER);
+		it('does NOT pass minAda — tx3 computes it via min_utxo(escrow_output)', async () => {
+			await submitLockEscrow('order-token-no-min-ada', TOKEN_VALUE, STUB_BUYER_SIGNER);
 
 			const args = mockLockEscrowTokens.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.minAda).toBe(Number(TOKEN_VALUE.lovelace));
+			expect(args.min_ada).toBeUndefined();
 		});
 	});
 
@@ -544,10 +552,14 @@ describe('submitMarkShipped', () => {
 			await submitMarkShipped('order-ms-3');
 
 			const args = mockMarkShipped.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.escrowUtxo).toMatchObject({
-				txHash: STUB_ESCROW.utxo_tx_hash,
-				outputIndex: STUB_ESCROW.utxo_output_index,
-			});
+			expect(args.escrow_utxo).toMatchObject({ txid: STUB_ESCROW.utxo_tx_hash, index: STUB_ESCROW.utxo_output_index });
+		});
+
+		it('passes scriptRefUtxo from getScriptRefUtxo()', async () => {
+			await submitMarkShipped('order-ms-script-ref');
+
+			const args = mockMarkShipped.mock.calls[0][0] as Record<string, unknown>;
+			expect(args.script_ref_utxo).toMatchObject({ txid: STUB_SCRIPT_REF_UTXO.txHash, index: STUB_SCRIPT_REF_UTXO.outputIndex });
 		});
 
 		it('passes shippedAt as current Unix timestamp in milliseconds (within 2s window)', async () => {
@@ -556,9 +568,9 @@ describe('submitMarkShipped', () => {
 			const after = Date.now();
 
 			const args = mockMarkShipped.mock.calls[0][0] as Record<string, unknown>;
-			expect(typeof args.shippedAt).toBe('number');
-			expect(args.shippedAt as number).toBeGreaterThanOrEqual(before);
-			expect(args.shippedAt as number).toBeLessThanOrEqual(after);
+			expect(typeof args.shipped_at).toBe('number');
+			expect(args.shipped_at as number).toBeGreaterThanOrEqual(before);
+			expect(args.shipped_at as number).toBeLessThanOrEqual(after);
 		});
 
 		it('passes gracePeriodEnd as shippedAt + gracePeriodSeconds * 1000', async () => {
@@ -570,8 +582,8 @@ describe('submitMarkShipped', () => {
 			const after = Date.now();
 
 			const args = mockMarkShipped.mock.calls[0][0] as Record<string, unknown>;
-			const shippedAt = args.shippedAt as number;
-			const gracePeriodEnd = args.gracePeriodEnd as number;
+			const shippedAt = args.shipped_at as number;
+			const gracePeriodEnd = args.grace_period_end as number;
 
 			expect(gracePeriodEnd).toBeGreaterThanOrEqual(before + gracePeriodSecs * 1000);
 			expect(gracePeriodEnd).toBeLessThanOrEqual(after + gracePeriodSecs * 1000);
@@ -717,10 +729,14 @@ describe('submitReleaseEscrow', () => {
 			await submitReleaseEscrow('order-rel-3');
 
 			const args = mockReleaseEscrow.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.escrowUtxo).toMatchObject({
-				txHash: STUB_ESCROW.utxo_tx_hash,
-				outputIndex: STUB_ESCROW.utxo_output_index,
-			});
+			expect(args.escrow_utxo).toMatchObject({ txid: STUB_ESCROW.utxo_tx_hash, index: STUB_ESCROW.utxo_output_index });
+		});
+
+		it('passes scriptRefUtxo from getScriptRefUtxo()', async () => {
+			await submitReleaseEscrow('order-rel-script-ref');
+
+			const args = mockReleaseEscrow.mock.calls[0][0] as Record<string, unknown>;
+			expect(args.script_ref_utxo).toMatchObject({ txid: STUB_SCRIPT_REF_UTXO.txHash, index: STUB_SCRIPT_REF_UTXO.outputIndex });
 		});
 	});
 
@@ -769,7 +785,7 @@ describe('submitReleaseEscrow', () => {
 describe('submitRefundEscrow', () => {
 	describe('escrow lookup', () => {
 		it('calls getEscrowByOrderId with the provided orderId', async () => {
-			await submitRefundEscrow('order-ref-1', STUB_BUYER_HASH_SIGNER);
+			await submitRefundEscrow('order-ref-1', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32);
 
 			expect(mockGetEscrowByOrderId).toHaveBeenCalledOnce();
 			expect(mockGetEscrowByOrderId).toHaveBeenCalledWith('order-ref-1');
@@ -778,13 +794,15 @@ describe('submitRefundEscrow', () => {
 		it('throws if getEscrowByOrderId returns null', async () => {
 			mockGetEscrowByOrderId.mockResolvedValueOnce(null);
 
-			await expect(submitRefundEscrow('order-ref-missing', STUB_BUYER_HASH_SIGNER)).rejects.toThrow();
+			await expect(
+				submitRefundEscrow('order-ref-missing', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32),
+			).rejects.toThrow();
 		});
 	});
 
 	describe('protocol call arguments', () => {
 		it('calls client.refundEscrow (not other tx methods)', async () => {
-			await submitRefundEscrow('order-ref-2', STUB_BUYER_HASH_SIGNER);
+			await submitRefundEscrow('order-ref-2', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32);
 
 			expect(mockRefundEscrow).toHaveBeenCalledOnce();
 			expect(mockLockEscrowAda).not.toHaveBeenCalled();
@@ -793,19 +811,23 @@ describe('submitRefundEscrow', () => {
 		});
 
 		it('passes escrowUtxo with the utxo_tx_hash and utxo_output_index from the escrow row', async () => {
-			await submitRefundEscrow('order-ref-3', STUB_BUYER_HASH_SIGNER);
+			await submitRefundEscrow('order-ref-3', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32);
 
 			const args = mockRefundEscrow.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.escrowUtxo).toMatchObject({
-				txHash: STUB_ESCROW.utxo_tx_hash,
-				outputIndex: STUB_ESCROW.utxo_output_index,
-			});
+			expect(args.escrow_utxo).toMatchObject({ txid: STUB_ESCROW.utxo_tx_hash, index: STUB_ESCROW.utxo_output_index });
+		});
+
+		it('passes scriptRefUtxo from getScriptRefUtxo()', async () => {
+			await submitRefundEscrow('order-ref-script-ref', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32);
+
+			const args = mockRefundEscrow.mock.calls[0][0] as Record<string, unknown>;
+			expect(args.script_ref_utxo).toMatchObject({ txid: STUB_SCRIPT_REF_UTXO.txHash, index: STUB_SCRIPT_REF_UTXO.outputIndex });
 		});
 	});
 
 	describe('signing — buyer hash signer', () => {
 		it('signs the tx body hash with the buyer hash signer (not CIP-30 signTx, not merchant signer)', async () => {
-			await submitRefundEscrow('order-ref-sign', STUB_BUYER_HASH_SIGNER);
+			await submitRefundEscrow('order-ref-sign', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32);
 
 			// signTxBodyHash must be called with the envelope hash
 			expect(mockSignTxBodyHash).toHaveBeenCalledOnce();
@@ -818,14 +840,14 @@ describe('submitRefundEscrow', () => {
 
 		it('does NOT call getChangeAddress (refund just signs the hash)', async () => {
 			// refundEscrow doesn't need to derive buyer PKH — it just signs the hash
-			await submitRefundEscrow('order-ref-no-addr', STUB_BUYER_HASH_SIGNER);
+			await submitRefundEscrow('order-ref-no-addr', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32);
 
 			// CIP-30 getChangeAddress must NOT be called
 			expect(mockGetChangeAddress).not.toHaveBeenCalled();
 		});
 
 		it('submits with a vkey witness built from the signer output', async () => {
-			await submitRefundEscrow('order-ref-witnesses', STUB_BUYER_HASH_SIGNER);
+			await submitRefundEscrow('order-ref-witnesses', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32);
 
 			expect(mockSubmit).toHaveBeenCalledOnce();
 			const submitArgs = mockSubmit.mock.calls[0][0] as {
@@ -846,7 +868,7 @@ describe('submitRefundEscrow', () => {
 
 	describe('return value', () => {
 		it('returns { txHash } equal to the envelope hash', async () => {
-			const result = await submitRefundEscrow('order-ref-return', STUB_BUYER_HASH_SIGNER);
+			const result = await submitRefundEscrow('order-ref-return', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32);
 
 			expect(result).toEqual({ txHash: STUB_ENVELOPE.hash });
 		});
@@ -857,9 +879,9 @@ describe('submitRefundEscrow', () => {
 			const err = new Error('ChainUnavailable: refundEscrow failed');
 			mockRefundEscrow.mockRejectedValueOnce(err);
 
-			await expect(submitRefundEscrow('order-ref-err', STUB_BUYER_HASH_SIGNER)).rejects.toThrow(
-				'ChainUnavailable: refundEscrow failed',
-			);
+			await expect(
+				submitRefundEscrow('order-ref-err', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32),
+			).rejects.toThrow('ChainUnavailable: refundEscrow failed');
 		});
 	});
 });

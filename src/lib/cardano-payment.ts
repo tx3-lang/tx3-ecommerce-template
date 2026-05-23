@@ -1,7 +1,6 @@
-// Lib
-import { type EscrowValue, submitLockEscrow } from '@/lib/cardano/escrow';
-import { getScriptAddress } from '@/lib/cardano/escrow-policy';
-import { submitPaymentServerFn } from '@/server-fns/payments';
+// Server fns — keep all node-only escrow code (node:fs, signer, cbor-x) off
+// the browser bundle by going through createServerFn calls.
+import { prepareLockEscrowServerFn, submitLockEscrowServerFn } from '@/server-fns/payments';
 
 export interface PaymentResult {
 	success: boolean;
@@ -25,8 +24,6 @@ export interface OrderPaymentInfo {
 	amount: number;
 	policyId?: string;
 	assetName?: string;
-	// Token min-ADA (only relevant for token payments)
-	minAda?: number;
 }
 
 export interface MultiCurrencyPaymentResult {
@@ -50,54 +47,56 @@ export interface MultiCurrencyPaymentResult {
 
 export async function processCardanoPayment(wallet: CardanoWalletAPI, order: OrderPaymentInfo): Promise<PaymentResult> {
 	try {
-		// Build the escrow value shape expected by submitLockEscrow
 		const isAdaPayment = !order.policyId && !order.assetName;
 
-		let value: EscrowValue;
-		if (isAdaPayment) {
-			value = { lovelace: BigInt(order.amount) };
-		} else {
-			value = {
-				lovelace: BigInt(order.minAda ?? 2_000_000), // 2 ADA default min-ADA
-				// biome-ignore lint/style/noNonNullAssertion: guard checked above
-				policyId: order.policyId!,
-				// biome-ignore lint/style/noNonNullAssertion: guard checked above
-				assetName: order.assetName!,
-				quantity: BigInt(order.amount),
-			};
-		}
+		// Build the JSON-serialisable value shape for the server fn. For tokens
+		// we no longer pass min-ADA: tx3 computes it via min_utxo(escrow_output)
+		// from the resolved output contents.
+		const value = isAdaPayment
+			? ({ kind: 'ada', lovelace: order.amount } as const)
+			: ({
+					kind: 'token',
+					// biome-ignore lint/style/noNonNullAssertion: guard checked above
+					policyId: order.policyId!,
+					// biome-ignore lint/style/noNonNullAssertion: guard checked above
+					assetName: order.assetName!,
+					quantity: order.amount,
+				} as const);
 
-		// Submit the lock tx — returns { lockTxHash, lockOutputIndex, datumCbor,
-		//   paidAt, shipDeadline, buyerPkh, merchantPkh }
-		const lockResult = await submitLockEscrow(order.id, value, wallet);
-
-		// Derive the script address from the compiled Plutus validator (aiken/plutus.json).
-		// This is authoritative — no env var needed.
-		const scriptAddress = getScriptAddress();
-
-		// Convert epoch-ms timestamps from lockResult to ISO strings for the DB.
-		const paidAt = new Date(lockResult.paidAt).toISOString();
-		const shipDeadline = new Date(lockResult.shipDeadline).toISOString();
-
-		await submitPaymentServerFn({
+		// Step 1: server resolves the lock tx via TRP.
+		const buyerAddressHex = await wallet.getChangeAddress();
+		const prepared = await prepareLockEscrowServerFn({
 			data: {
 				orderId: order.id,
-				lockTxHash: lockResult.lockTxHash,
-				lockOutputIndex: lockResult.lockOutputIndex,
-				datumCbor: lockResult.datumCbor,
-				scriptAddress,
-				buyerPkh: lockResult.buyerPkh,
-				merchantPkh: lockResult.merchantPkh,
-				paidAt,
-				shipDeadline,
+				value,
+				buyerAddressHex,
+			},
+		});
+
+		// Step 2: browser signs with CIP-30 wallet (partialSign=true).
+		const witnessSetCborHex = await wallet.signTx(prepared.envelope.tx, true);
+
+		// Step 3: server submits to chain and writes DB rows.
+		const result = await submitLockEscrowServerFn({
+			data: {
+				orderId: order.id,
+				envelope: prepared.envelope,
+				witnessSetCborHex,
+				datumCbor: prepared.datumCbor,
+				scriptAddress: prepared.scriptAddress,
+				buyerPkh: prepared.buyerPkh,
+				merchantPkh: prepared.merchantPkh,
+				paidAt: new Date(prepared.paidAt).toISOString(),
+				shipDeadline: new Date(prepared.shipDeadline).toISOString(),
+				lockOutputIndex: prepared.lockOutputIndex,
 			},
 		});
 
 		return {
 			success: true,
-			txHash: lockResult.lockTxHash,
-			lockOutputIndex: lockResult.lockOutputIndex,
-			datumCbor: lockResult.datumCbor,
+			txHash: result.lockTxHash,
+			lockOutputIndex: prepared.lockOutputIndex,
+			datumCbor: prepared.datumCbor,
 		};
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Payment failed';

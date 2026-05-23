@@ -1,13 +1,18 @@
 /**
  * Tests for src/lib/cardano/traceability.ts
  *
- * Mocks at all three external boundaries:
+ * Mocks at all external boundaries:
  *   - @/lib/tx3/protocol        — codegen Client (recordOrderEvent + submit)
  *   - ./signer.js               — getMerchantSigner
  *   - ./network.js              — getNetworkConfig
  *   - @/server-fns/escrows      — getEscrowByOrderId
+ *
+ * Asserts the new 4-label metadata wire shape: each event becomes one tx with
+ * four named args (`event`, `order_id`, `ts`, `extra`), each hex-encoded UTF-8
+ * (or Int for ts). See traceability.ts for the metadata layout rationale.
  */
 
+import { Buffer } from 'buffer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
@@ -23,9 +28,9 @@ const mockClientConstructor = vi.fn();
 // ---------------------------------------------------------------------------
 
 vi.mock('@/lib/tx3/protocol', () => {
-	// Named function so `new Client(opts, profile)` works as a constructor call.
-	function Client(options: unknown, profile: unknown) {
-		mockClientConstructor(options, profile);
+	// Named function so `new Client(opts, profile, parties)` works as a constructor call.
+	function Client(options: unknown, profile: unknown, parties: unknown) {
+		mockClientConstructor(options, profile, parties);
 		return {
 			recordOrderEvent: mockRecordOrderEvent,
 			submit: mockSubmit,
@@ -90,8 +95,6 @@ const STUB_SUBMIT_RESPONSE = { status: 'accepted' };
 
 // ---------------------------------------------------------------------------
 // Import module under test (after mocks are registered)
-// vi.mock calls are hoisted to top of file, so by the time this runs the
-// factories are already registered and the imports below will receive mocks.
 // ---------------------------------------------------------------------------
 
 const { submitPaidTrace, submitShippedTrace, submitCompletedTrace, submitCancelledTrace } = await import(
@@ -109,101 +112,93 @@ beforeEach(() => {
 	mockGetMerchantSigner.mockReturnValue({ sign: mockSign });
 	mockRecordOrderEvent.mockResolvedValue(STUB_ENVELOPE);
 	mockSubmit.mockResolvedValue(STUB_SUBMIT_RESPONSE);
-	// Default: no escrow row exists
 	mockGetEscrowByOrderId.mockResolvedValue(null);
 });
 
 // ---------------------------------------------------------------------------
-// Helper to decode the metadata payload from a mock call
+// Helpers — decode the args passed to client.recordOrderEvent
 // ---------------------------------------------------------------------------
 
-function decodePayload(callIndex = 0) {
-	const callArgs = mockRecordOrderEvent.mock.calls[callIndex][0] as { metadataPayload: string; merchant: string };
-	return JSON.parse(Buffer.from(callArgs.metadataPayload, 'hex').toString('utf8'));
+interface RecordOrderEventArgs {
+	event: string;
+	order_id: string;
+	ts: number;
+	extra: string;
 }
 
+function getArgs(callIndex = 0): RecordOrderEventArgs {
+	return mockRecordOrderEvent.mock.calls[callIndex][0] as RecordOrderEventArgs;
+}
+
+function hexToUtf8(hex: string): string {
+	return Buffer.from(hex, 'hex').toString('utf8');
+}
+
+// ---------------------------------------------------------------------------
+// submitPaidTrace
+// ---------------------------------------------------------------------------
+
 describe('submitPaidTrace', () => {
-	describe('payload shape', () => {
-		it('builds a payload with v=1 and event="paid"', async () => {
+	describe('metadata args', () => {
+		it('sends event="paid" hex-encoded under the `event` arg', async () => {
 			await submitPaidTrace('order-uuid-1234');
 
 			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
-			const raw = Buffer.from(
-				(mockRecordOrderEvent.mock.calls[0][0] as { metadataPayload: string; merchant: string }).metadataPayload,
-				'hex',
-			).toString('utf8');
-			const payload = JSON.parse(raw);
-
-			expect(payload.v).toBe(1);
-			expect(payload.event).toBe('paid');
+			const args = getArgs();
+			expect(hexToUtf8(args.event)).toBe('paid');
 		});
 
-		it('includes the order_id in the payload', async () => {
+		it('sends the order_id hex-encoded under the `order_id` arg', async () => {
 			const orderId = 'my-order-uuid-5678';
 			await submitPaidTrace(orderId);
 
-			const callArgs = mockRecordOrderEvent.mock.calls[0][0] as { metadataPayload: string };
-			const payload = JSON.parse(Buffer.from(callArgs.metadataPayload, 'hex').toString('utf8'));
-
-			expect(payload.order_id).toBe(orderId);
+			expect(hexToUtf8(getArgs().order_id)).toBe(orderId);
 		});
 
-		it('includes merchant from config in the payload', async () => {
-			await submitPaidTrace('order-abc');
-
-			const callArgs = mockRecordOrderEvent.mock.calls[0][0] as { metadataPayload: string };
-			const payload = JSON.parse(Buffer.from(callArgs.metadataPayload, 'hex').toString('utf8'));
-
-			expect(payload.merchant).toBe(STUB_CONFIG.merchantAddress);
-		});
-
-		it('includes a numeric ts (Unix seconds) in the payload', async () => {
+		it('sends a numeric ts (Unix seconds) under the `ts` arg', async () => {
 			const before = Math.floor(Date.now() / 1000);
 			await submitPaidTrace('order-ts-check');
 			const after = Math.floor(Date.now() / 1000);
 
-			const callArgs = mockRecordOrderEvent.mock.calls[0][0] as { metadataPayload: string };
-			const payload = JSON.parse(Buffer.from(callArgs.metadataPayload, 'hex').toString('utf8'));
-
-			expect(typeof payload.ts).toBe('number');
-			expect(payload.ts).toBeGreaterThanOrEqual(before);
-			expect(payload.ts).toBeLessThanOrEqual(after);
+			const { ts } = getArgs();
+			expect(typeof ts).toBe('number');
+			expect(ts).toBeGreaterThanOrEqual(before);
+			expect(ts).toBeLessThanOrEqual(after);
 		});
 
-		it('includes data as an empty object (not null or omitted)', async () => {
-			await submitPaidTrace('order-data-check');
+		it('sends an empty `extra` for paid (no event-specific payload)', async () => {
+			await submitPaidTrace('order-extra-check');
 
-			const callArgs = mockRecordOrderEvent.mock.calls[0][0] as { metadataPayload: string };
-			const payload = JSON.parse(Buffer.from(callArgs.metadataPayload, 'hex').toString('utf8'));
+			expect(getArgs().extra).toBe('');
+		});
 
-			expect(payload.data).toEqual({});
+		it('each Bytes arg is a hex string', async () => {
+			await submitPaidTrace('order-args-hex');
+			const { event, order_id, extra } = getArgs();
+
+			expect(event).toMatch(/^[0-9a-f]*$/);
+			expect(order_id).toMatch(/^[0-9a-f]*$/);
+			expect(extra).toMatch(/^[0-9a-f]*$/);
 		});
 	});
 
-	describe('client.recordOrderEvent call', () => {
-		it('calls recordOrderEvent with the hex metadataPayload arg', async () => {
-			await submitPaidTrace('order-args-check');
-
-			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
-			const args = mockRecordOrderEvent.mock.calls[0][0] as Record<string, unknown>;
-
-			expect(typeof args.metadataPayload).toBe('string');
-			// hex string: only 0-9 a-f chars
-			expect(args.metadataPayload).toMatch(/^[0-9a-f]+$/);
-		});
-
-		it('injects the merchant party into the recordOrderEvent args', async () => {
+	describe('client construction', () => {
+		it('injects the merchant party at Client construction', async () => {
 			await submitPaidTrace('order-party-inject');
 
-			const args = mockRecordOrderEvent.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.merchant).toBe(STUB_CONFIG.merchantAddress);
+			const parties = mockClientConstructor.mock.calls[0][2] as Record<string, string>;
+			expect(parties).toMatchObject({ merchant: STUB_CONFIG.merchantAddress });
 		});
 
-		it('constructs Client with the endpoint and profile from network config', async () => {
+		it('constructs Client with the endpoint, profile, and merchant party', async () => {
 			await submitPaidTrace('order-client-opts');
 
 			expect(mockClientConstructor).toHaveBeenCalledOnce();
-			expect(mockClientConstructor).toHaveBeenCalledWith({ endpoint: STUB_CONFIG.trpEndpoint }, STUB_CONFIG.profile);
+			expect(mockClientConstructor).toHaveBeenCalledWith(
+				{ endpoint: STUB_CONFIG.trpEndpoint },
+				STUB_CONFIG.profile,
+				{ merchant: STUB_CONFIG.merchantAddress },
+			);
 		});
 	});
 
@@ -217,8 +212,8 @@ describe('submitPaidTrace', () => {
 		});
 	});
 
-	describe('client.submit call', () => {
-		it('calls client.submit with the envelope tx content and witnesses from the signer', async () => {
+	describe('submit', () => {
+		it('calls client.submit with the envelope tx content and witnesses', async () => {
 			await submitPaidTrace('order-submit-check');
 
 			expect(mockSubmit).toHaveBeenCalledOnce();
@@ -275,7 +270,6 @@ describe('submitPaidTrace', () => {
 		});
 
 		it('falls back to the metadata-only chain path when no escrow row exists', async () => {
-			// mockGetEscrowByOrderId already returns null by default from beforeEach
 			const result = await submitPaidTrace('order-no-escrow');
 
 			expect(result).toEqual({ txHash: STUB_ENVELOPE.hash, confirmed: false });
@@ -290,46 +284,38 @@ describe('submitPaidTrace', () => {
 // ---------------------------------------------------------------------------
 
 describe('submitShippedTrace', () => {
-	describe('payload shape — no tracking number', () => {
-		it('builds a payload with v=1 and event="shipped"', async () => {
+	describe('metadata args — no tracking number', () => {
+		it('sends event="shipped"', async () => {
 			await submitShippedTrace('order-shipped-1');
 
 			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
-			const payload = decodePayload();
-
-			expect(payload.v).toBe(1);
-			expect(payload.event).toBe('shipped');
+			expect(hexToUtf8(getArgs().event)).toBe('shipped');
 		});
 
-		it('includes the order_id in the payload', async () => {
+		it('sends the order_id', async () => {
 			await submitShippedTrace('order-shipped-2');
 
-			const payload = decodePayload();
-			expect(payload.order_id).toBe('order-shipped-2');
+			expect(hexToUtf8(getArgs().order_id)).toBe('order-shipped-2');
 		});
 
-		it('includes data as an empty object when no trackingNumber is provided', async () => {
+		it('sends an empty extra when no trackingNumber is provided', async () => {
 			await submitShippedTrace('order-shipped-3');
 
-			const payload = decodePayload();
-			expect(payload.data).toEqual({});
+			expect(getArgs().extra).toBe('');
 		});
 
-		it('includes data as an empty object when opts is provided but trackingNumber is omitted', async () => {
+		it('sends an empty extra when opts is provided but trackingNumber is omitted', async () => {
 			await submitShippedTrace('order-shipped-4', {});
 
-			const payload = decodePayload();
-			expect(payload.data).toEqual({});
+			expect(getArgs().extra).toBe('');
 		});
 	});
 
-	describe('payload shape — with tracking number', () => {
-		it('includes data.tracking_number when trackingNumber is provided', async () => {
+	describe('metadata args — with tracking number', () => {
+		it('hex-encodes the tracking number into the extra arg', async () => {
 			await submitShippedTrace('order-shipped-5', { trackingNumber: 'ABC123' });
 
-			const payload = decodePayload();
-			expect(payload.event).toBe('shipped');
-			expect(payload.data).toEqual({ tracking_number: 'ABC123' });
+			expect(hexToUtf8(getArgs().extra)).toBe('ABC123');
 		});
 	});
 
@@ -355,29 +341,24 @@ describe('submitShippedTrace', () => {
 // ---------------------------------------------------------------------------
 
 describe('submitCompletedTrace', () => {
-	describe('payload shape', () => {
-		it('builds a payload with v=1 and event="completed"', async () => {
+	describe('metadata args', () => {
+		it('sends event="completed"', async () => {
 			await submitCompletedTrace('order-completed-1');
 
 			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
-			const payload = decodePayload();
-
-			expect(payload.v).toBe(1);
-			expect(payload.event).toBe('completed');
+			expect(hexToUtf8(getArgs().event)).toBe('completed');
 		});
 
-		it('includes the order_id in the payload', async () => {
+		it('sends the order_id', async () => {
 			await submitCompletedTrace('order-completed-2');
 
-			const payload = decodePayload();
-			expect(payload.order_id).toBe('order-completed-2');
+			expect(hexToUtf8(getArgs().order_id)).toBe('order-completed-2');
 		});
 
-		it('includes data as an empty object', async () => {
+		it('sends an empty extra', async () => {
 			await submitCompletedTrace('order-completed-3');
 
-			const payload = decodePayload();
-			expect(payload.data).toEqual({});
+			expect(getArgs().extra).toBe('');
 		});
 	});
 
@@ -403,36 +384,30 @@ describe('submitCompletedTrace', () => {
 // ---------------------------------------------------------------------------
 
 describe('submitCancelledTrace', () => {
-	describe('payload shape', () => {
-		it('builds a payload with v=1 and event="cancelled"', async () => {
+	describe('metadata args', () => {
+		it('sends event="cancelled"', async () => {
 			await submitCancelledTrace('order-cancelled-1', { reason: 'buyer requested' });
 
 			expect(mockRecordOrderEvent).toHaveBeenCalledOnce();
-			const payload = decodePayload();
-
-			expect(payload.v).toBe(1);
-			expect(payload.event).toBe('cancelled');
+			expect(hexToUtf8(getArgs().event)).toBe('cancelled');
 		});
 
-		it('includes the order_id in the payload', async () => {
+		it('sends the order_id', async () => {
 			await submitCancelledTrace('order-cancelled-2', { reason: 'out of stock' });
 
-			const payload = decodePayload();
-			expect(payload.order_id).toBe('order-cancelled-2');
+			expect(hexToUtf8(getArgs().order_id)).toBe('order-cancelled-2');
 		});
 
-		it('includes data.reason from the opts argument', async () => {
+		it('hex-encodes the reason into the extra arg', async () => {
 			await submitCancelledTrace('order-cancelled-3', { reason: 'buyer requested' });
 
-			const payload = decodePayload();
-			expect(payload.data).toEqual({ reason: 'buyer requested' });
+			expect(hexToUtf8(getArgs().extra)).toBe('buyer requested');
 		});
 
-		it('carries the provided reason through to data.reason', async () => {
+		it('carries the provided reason through', async () => {
 			await submitCancelledTrace('order-cancelled-4', { reason: 'fraud detected' });
 
-			const payload = decodePayload();
-			expect(payload.data.reason).toBe('fraud detected');
+			expect(hexToUtf8(getArgs().extra)).toBe('fraud detected');
 		});
 	});
 

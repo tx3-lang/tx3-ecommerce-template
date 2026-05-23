@@ -88,6 +88,8 @@ const ORDER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const TX_HASH = 'cafebabe00112233deadbeef445566778899aabbccddeeff00112233445566778899';
 // Valid 32-byte Ed25519 private key (test only — never use in production)
 const BUYER_KEY_HEX = 'a'.repeat(64);
+// Bech32 buyer address passed as the Buyer party to refund_escrow
+const BUYER_ADDRESS = 'addr_test1vqyqxqzqgxqyqyqgxqyqyqgxqyqyqgxqyqyqgxqyqgxq8zsh3w';
 
 const REFUND_RESULT = { txHash: TX_HASH };
 
@@ -156,21 +158,27 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 describe('arg parsing', () => {
 	it('rejects missing --order-id with MISSING_ARG error', async () => {
-		await expect(main(['--buyer-key', BUYER_KEY_HEX])).rejects.toThrow('MISSING_ARG');
+		await expect(main(['--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow('MISSING_ARG');
 	});
 
 	it('rejects missing --buyer-key with MISSING_ARG error', async () => {
 		await expect(main(['--order-id', ORDER_ID])).rejects.toThrow('MISSING_ARG');
 	});
 
+	it('rejects missing --buyer-address with MISSING_ARG error', async () => {
+		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).rejects.toThrow('MISSING_ARG');
+	});
+
 	it('rejects invalid --buyer-key (wrong length) with INVALID_ARG error', async () => {
 		mockSingle.mockResolvedValue({ data: STUB_ESCROW_PENDING, error: null });
 
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', 'deadbeef'])).rejects.toThrow('INVALID_ARG');
+		await expect(
+			main(['--order-id', ORDER_ID, '--buyer-key', 'deadbeef', '--buyer-address', BUYER_ADDRESS]),
+		).rejects.toThrow('INVALID_ARG');
 	});
 
 	it('accepts --order-id and --buyer-key together', async () => {
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).resolves.not.toThrow();
+		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).resolves.not.toThrow();
 	});
 });
 
@@ -179,7 +187,7 @@ describe('arg parsing', () => {
 // ---------------------------------------------------------------------------
 describe('escrow state validation', () => {
 	it('queries the escrows table for the given order_id', async () => {
-		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX]);
+		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS]);
 
 		expect(mockFrom).toHaveBeenCalledWith('escrows');
 		expect(mockSelect).toHaveBeenCalledWith('*');
@@ -193,7 +201,7 @@ describe('escrow state validation', () => {
 			error: null,
 		});
 
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).rejects.toThrow('INVALID_STATE');
+		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow('INVALID_STATE');
 	});
 
 	it('aborts with INVALID_STATE when escrow status is "released"', async () => {
@@ -202,7 +210,7 @@ describe('escrow state validation', () => {
 			error: null,
 		});
 
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).rejects.toThrow('INVALID_STATE');
+		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow('INVALID_STATE');
 	});
 
 	it('aborts with SHIP_DEADLINE_NOT_REACHED when NOW() < ship_deadline', async () => {
@@ -211,7 +219,7 @@ describe('escrow state validation', () => {
 			error: null,
 		});
 
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).rejects.toThrow('SHIP_DEADLINE_NOT_REACHED');
+		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow('SHIP_DEADLINE_NOT_REACHED');
 	});
 
 	it('aborts with ESCROW_NOT_FOUND when Supabase returns no data', async () => {
@@ -220,11 +228,11 @@ describe('escrow state validation', () => {
 			error: { message: 'not found', code: 'PGRST116' },
 		});
 
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).rejects.toThrow('ESCROW_NOT_FOUND');
+		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow('ESCROW_NOT_FOUND');
 	});
 
 	it('proceeds when status="pending" and ship_deadline has passed', async () => {
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).resolves.not.toThrow();
+		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).resolves.not.toThrow();
 	});
 });
 
@@ -232,14 +240,15 @@ describe('escrow state validation', () => {
 // submitRefundEscrow call
 // ---------------------------------------------------------------------------
 describe('submitRefundEscrow', () => {
-	it('calls submitRefundEscrow with the orderId and a BuyerSigner', async () => {
-		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX]);
+	it('calls submitRefundEscrow with the orderId, a BuyerSigner, and the buyer address', async () => {
+		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS]);
 
 		expect(mockSubmitRefundEscrow).toHaveBeenCalledOnce();
 		expect(mockSubmitRefundEscrow).toHaveBeenCalledWith(
 			ORDER_ID,
 			// buyer signer is a BuyerSigner object — check it has a signTxBodyHash method
 			expect.objectContaining({ signTxBodyHash: expect.any(Function) }),
+			BUYER_ADDRESS,
 		);
 	});
 });
@@ -249,7 +258,7 @@ describe('submitRefundEscrow', () => {
 // ---------------------------------------------------------------------------
 describe('DB updates on success', () => {
 	it('updates escrows with status="refunded" and refund_tx_hash', async () => {
-		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX]);
+		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS]);
 
 		expect(mockFrom).toHaveBeenCalledWith('escrows');
 		expect(mockUpdate).toHaveBeenCalledWith(
@@ -262,7 +271,7 @@ describe('DB updates on success', () => {
 	});
 
 	it('updates orders with status="cancelled"', async () => {
-		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX]);
+		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS]);
 
 		expect(mockFrom).toHaveBeenCalledWith('orders');
 		expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled' }));
@@ -270,7 +279,7 @@ describe('DB updates on success', () => {
 	});
 
 	it('inserts an order_events row with event_type="cancelled", tx hash, and reason="ship_deadline_exceeded"', async () => {
-		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX]);
+		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS]);
 
 		expect(mockInsertOrderEvent).toHaveBeenCalledOnce();
 		expect(mockInsertOrderEvent).toHaveBeenCalledWith(
@@ -293,7 +302,7 @@ describe('submitRefundEscrow failure', () => {
 	it('does NOT update escrows when submitRefundEscrow throws', async () => {
 		mockSubmitRefundEscrow.mockRejectedValueOnce(new Error('ChainUnavailable: connection refused'));
 
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).rejects.toThrow();
+		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow();
 
 		// Only escrows SELECT should have been called, not UPDATE
 		const updateCalls = mockUpdate.mock.calls;
@@ -303,7 +312,7 @@ describe('submitRefundEscrow failure', () => {
 	it('does NOT update orders when submitRefundEscrow throws', async () => {
 		mockSubmitRefundEscrow.mockRejectedValueOnce(new Error('ChainUnavailable: connection refused'));
 
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).rejects.toThrow();
+		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow();
 
 		expect(mockUpdate).not.toHaveBeenCalled();
 	});
@@ -311,7 +320,7 @@ describe('submitRefundEscrow failure', () => {
 	it('does NOT call insertOrderEvent when submitRefundEscrow throws', async () => {
 		mockSubmitRefundEscrow.mockRejectedValueOnce(new Error('ChainUnavailable: connection refused'));
 
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).rejects.toThrow();
+		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow();
 
 		expect(mockInsertOrderEvent).not.toHaveBeenCalled();
 	});
@@ -319,7 +328,7 @@ describe('submitRefundEscrow failure', () => {
 	it('propagates the chain error', async () => {
 		mockSubmitRefundEscrow.mockRejectedValueOnce(new Error('TxRejected'));
 
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).rejects.toThrow('TxRejected');
+		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow('TxRejected');
 	});
 });
 
@@ -328,7 +337,7 @@ describe('submitRefundEscrow failure', () => {
 // ---------------------------------------------------------------------------
 describe('output', () => {
 	it('includes the tx hash in the return value', async () => {
-		const result = await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX]);
+		const result = await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS]);
 
 		expect(result.txHash).toBe(TX_HASH);
 	});
@@ -336,7 +345,7 @@ describe('output', () => {
 	it('includes a preview.cexplorer.io explorer URL when profile is "preview"', async () => {
 		mockGetNetworkConfig.mockReturnValue(STUB_NETWORK_PREVIEW);
 
-		const result = await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX]);
+		const result = await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS]);
 
 		expect(result.explorerUrl).toBe(`https://preview.cexplorer.io/tx/${TX_HASH}`);
 	});
@@ -344,7 +353,7 @@ describe('output', () => {
 	it('does NOT include an explorer URL when profile is "local"', async () => {
 		mockGetNetworkConfig.mockReturnValue(STUB_NETWORK_LOCAL);
 
-		const result = await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX]);
+		const result = await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS]);
 
 		expect(result.explorerUrl).toBeUndefined();
 	});

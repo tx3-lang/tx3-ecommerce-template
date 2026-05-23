@@ -105,3 +105,33 @@ export function getGracePeriodSeconds(): number {
 	}
 	return DEFAULT_GRACE_PERIOD_SECONDS;
 }
+
+/**
+ * Returns the UTxO ref of the published reference script that carries the
+ * escrow validator CBOR. Required by mark_shipped / release_escrow /
+ * refund_escrow — the tx3 TRP resolver attaches this UTxO as a reference
+ * input so the chain has the validator available without inlining the CBOR.
+ *
+ * Must be set per environment after running the one-time publish tx:
+ *   ESCROW_SCRIPT_REF_TX_HASH       — hex tx hash of the publish tx
+ *   ESCROW_SCRIPT_REF_OUTPUT_INDEX  — index of the output whose
+ *                                     reference_script slot holds the CBOR
+ *
+ * Throws MISSING_ENV if either var is unset.
+ */
+export function getScriptRefUtxo(): { txHash: string; outputIndex: number } {
+	const txHash = process.env.ESCROW_SCRIPT_REF_TX_HASH;
+	const outputIndexRaw = process.env.ESCROW_SCRIPT_REF_OUTPUT_INDEX;
+
+	if (!txHash) {
+		throw new Error('MISSING_ENV: ESCROW_SCRIPT_REF_TX_HASH is required');
+	}
+	if (outputIndexRaw === undefined || outputIndexRaw === '') {
+		throw new Error('MISSING_ENV: ESCROW_SCRIPT_REF_OUTPUT_INDEX is required');
+	}
+
+	return {
+		txHash,
+		outputIndex: Number(outputIndexRaw),
+	};
+}

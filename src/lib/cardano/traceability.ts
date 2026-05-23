@@ -5,6 +5,17 @@
  * milestones as Cardano tx metadata. The backend signer acts as the fee payer
  * and the tx is self-funded (merchant → merchant with metadata attached).
  *
+ * Metadata layout — one entry per logical field, each ≤ 64 bytes:
+ *   1337: event    — "paid" | "shipped" | "completed" | "cancelled" (UTF-8 bytes)
+ *   1338: order_id — UUID string (UTF-8 bytes, 36 chars)
+ *   1339: ts       — Unix seconds (Int)
+ *   1340: extra    — event-specific freeform UTF-8 (tracking, reason, or empty)
+ *
+ * Split across distinct integer labels because the Cardano metadata spec caps
+ * any single Bytes/Text leaf at 64 bytes. Once tx3 supports Map/Array values
+ * in metadata (see ISSUE_tx3_metadata_structured_values.md) this collapses to
+ * a single CIP-25-style record under label 1337.
+ *
  * Relies on:
  *   - getNetworkConfig() — trpEndpoint, profile, merchantAddress
  *   - getMerchantSigner() — Ed25519 signing of the resolved tx hash
@@ -30,83 +41,54 @@ export interface TraceResult {
 	confirmed: boolean;
 }
 
+export type TraceEvent = 'paid' | 'shipped' | 'completed' | 'cancelled';
+
 // ---------------------------------------------------------------------------
-// Internal payload types
+// Internal event description (4 fields → 4 metadata entries)
 // ---------------------------------------------------------------------------
 
-interface BasePayload {
-	v: 1;
-	order_id: string;
-	merchant: string;
-	ts: number;
+interface EventArgs {
+	event: TraceEvent;
+	orderId: string;
+	extra: string; // freeform UTF-8; empty string when no extra payload
 }
-
-interface PaidPayload extends BasePayload {
-	event: 'paid';
-	data: Record<string, never>;
-}
-
-interface ShippedPayloadNoTracking extends BasePayload {
-	event: 'shipped';
-	data: Record<string, never>;
-}
-
-interface ShippedPayloadWithTracking extends BasePayload {
-	event: 'shipped';
-	data: { tracking_number: string };
-}
-
-type ShippedPayload = ShippedPayloadNoTracking | ShippedPayloadWithTracking;
-
-interface CompletedPayload extends BasePayload {
-	event: 'completed';
-	data: Record<string, never>;
-}
-
-interface CancelledPayload extends BasePayload {
-	event: 'cancelled';
-	data: { reason: string };
-}
-
-type TracePayload = PaidPayload | ShippedPayload | CompletedPayload | CancelledPayload;
 
 // ---------------------------------------------------------------------------
 // Private shared pipeline
 // ---------------------------------------------------------------------------
 
+const utf8Hex = (s: string): string => Buffer.from(s, 'utf8').toString('hex');
+
 /**
  * Shared pipeline for all traceability events:
  * 1. Read network config (trpEndpoint, profile, merchantAddress).
- * 2. Hex-encode the JSON-serialised payload (tx3 Bytes args are hex strings).
+ * 2. Hex-encode each field separately (tx3 Bytes args expect a hex string).
  * 3. Resolve the `record_order_event` tx via the codegen Client.
  * 4. Sign the resolved tx hash with the backend Ed25519 signer.
  * 5. Submit the signed tx to the TRP.
  * 6. Return { txHash, confirmed: false } — reconciliation is handled by A12.
  */
-async function submitEvent(payload: TracePayload): Promise<TraceResult> {
+async function submitEvent({ event, orderId, extra }: EventArgs): Promise<TraceResult> {
 	const { trpEndpoint, trpApiKey, profile, merchantAddress } = getNetworkConfig();
 
-	// Hex-encode the UTF-8 JSON payload (tx3 Bytes args expect a hex string)
-	const metadataPayload = Buffer.from(JSON.stringify(payload), 'utf8').toString('hex');
-
-	// Construct the protocol client with the active profile
 	const clientOptions = trpApiKey
 		? { endpoint: trpEndpoint, headers: { 'dmtr-api-key': trpApiKey } }
 		: { endpoint: trpEndpoint };
-	const client = new Client(clientOptions, profile as ProfileName);
-
-	// Resolve the record_order_event tx.
-	// PROFILES[profile].parties is {} so merchant is not injected by the profile;
-	// we inject it explicitly via an args cast (same pattern as cardano-payment.ts).
-	const envelope: TxEnvelope = await client.recordOrderEvent({
-		metadataPayload,
+	const client = new Client(clientOptions, profile as ProfileName, {
 		merchant: merchantAddress,
-	} as Parameters<typeof client.recordOrderEvent>[0]);
+	});
 
-	// Sign the resolved tx hash with the backend signer
+	// Resolve the record_order_event tx. TRP expects the original .tx3 parameter
+	// names (snake_case) — the camelCase types from codegen do not match the wire.
+	const envelope: TxEnvelope = await client.recordOrderEvent({
+		event: utf8Hex(event),
+		order_id: utf8Hex(orderId),
+		ts: Math.floor(Date.now() / 1000),
+		extra: utf8Hex(extra),
+	} as unknown as Parameters<typeof client.recordOrderEvent>[0]);
+
 	const witnesses = getMerchantSigner().sign(envelope.hash);
 
-	// Submit the signed tx (response not used; A12 handles confirmation polling)
 	await client.submit({
 		tx: { content: envelope.tx, contentType: 'hex' },
 		witnesses,
@@ -137,81 +119,32 @@ export async function submitPaidTrace(orderId: string): Promise<TraceResult> {
 		return { txHash: escrow.utxo_tx_hash, confirmed: true };
 	}
 
-	const { merchantAddress } = getNetworkConfig();
-
-	const payload: PaidPayload = {
-		v: 1,
-		event: 'paid',
-		order_id: orderId,
-		merchant: merchantAddress,
-		ts: Math.floor(Date.now() / 1000),
-		data: {} as Record<string, never>,
-	};
-
-	return submitEvent(payload);
+	return submitEvent({ event: 'paid', orderId, extra: '' });
 }
 
 /**
  * Submits a `shipped` traceability event for the given order.
- * Optionally includes a tracking number in the payload data.
+ * Optionally includes a tracking number under the `extra` metadata label.
  */
 export async function submitShippedTrace(orderId: string, opts?: { trackingNumber?: string }): Promise<TraceResult> {
-	const { merchantAddress } = getNetworkConfig();
-
-	const payload: ShippedPayload = opts?.trackingNumber
-		? {
-				v: 1,
-				event: 'shipped',
-				order_id: orderId,
-				merchant: merchantAddress,
-				ts: Math.floor(Date.now() / 1000),
-				data: { tracking_number: opts.trackingNumber },
-			}
-		: {
-				v: 1,
-				event: 'shipped',
-				order_id: orderId,
-				merchant: merchantAddress,
-				ts: Math.floor(Date.now() / 1000),
-				data: {} as Record<string, never>,
-			};
-
-	return submitEvent(payload);
+	return submitEvent({
+		event: 'shipped',
+		orderId,
+		extra: opts?.trackingNumber ?? '',
+	});
 }
 
 /**
  * Submits a `completed` traceability event for the given order.
  */
 export async function submitCompletedTrace(orderId: string): Promise<TraceResult> {
-	const { merchantAddress } = getNetworkConfig();
-
-	const payload: CompletedPayload = {
-		v: 1,
-		event: 'completed',
-		order_id: orderId,
-		merchant: merchantAddress,
-		ts: Math.floor(Date.now() / 1000),
-		data: {} as Record<string, never>,
-	};
-
-	return submitEvent(payload);
+	return submitEvent({ event: 'completed', orderId, extra: '' });
 }
 
 /**
  * Submits a `cancelled` traceability event for the given order.
- * The cancellation reason is required.
+ * The cancellation reason is required and is written to the `extra` label.
  */
 export async function submitCancelledTrace(orderId: string, opts: { reason: string }): Promise<TraceResult> {
-	const { merchantAddress } = getNetworkConfig();
-
-	const payload: CancelledPayload = {
-		v: 1,
-		event: 'cancelled',
-		order_id: orderId,
-		merchant: merchantAddress,
-		ts: Math.floor(Date.now() / 1000),
-		data: { reason: opts.reason },
-	};
-
-	return submitEvent(payload);
+	return submitEvent({ event: 'cancelled', orderId, extra: opts.reason });
 }

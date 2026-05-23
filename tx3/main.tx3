@@ -2,7 +2,7 @@ party Buyer;
 
 party Merchant;
 
-policy Escrow = 0xfc7d512718ecf83ae3267b9dd69f6ecd4737bb8e5e14bb047c3e1c83;
+policy Escrow = 0x6a3fa39242a5f61199fbe9de108d27277000e89f6a59acb6a1b42010;
 
 // Option<Int> — represents None or Some(value) for grace_period_end
 type OptionInt {
@@ -73,7 +73,6 @@ tx lock_escrow_tokens(
     token_policy: Bytes,
     asset_name: Bytes,
     token_quantity: Int,
-    min_ada: Int,
     buyer_pkh: Bytes,
     merchant_pkh: Bytes,
     order_id: Bytes,
@@ -86,12 +85,12 @@ tx lock_escrow_tokens(
 
     input* source {
         from: Buyer,
-        min_amount: fees + tokens + Ada(min_ada),
+        min_amount: fees + tokens + min_utxo(escrow_output),
     }
 
     output escrow_output {
         to: Escrow,
-        amount: tokens + Ada(min_ada),
+        amount: tokens + min_utxo(escrow_output),
         datum: EscrowDatum {
             buyer: buyer_pkh,
             merchant: merchant_pkh,
@@ -104,7 +103,7 @@ tx lock_escrow_tokens(
 
     output {
         to: Buyer,
-        amount: source - tokens - Ada(min_ada) - fees,
+        amount: source - tokens - min_utxo(escrow_output) - fees,
     }
 
     signers {
@@ -115,9 +114,14 @@ tx lock_escrow_tokens(
 // Mark shipment — merchant spends Pending UTxO and re-locks with Shipped datum
 tx mark_shipped(
     escrow_utxo: UtxoRef,
+    script_ref_utxo: UtxoRef,
     shipped_at: Int,
     grace_period_end: Int,
 ) {
+    reference script_ref {
+        ref: script_ref_utxo,
+    }
+
     input gas {
         from: Merchant,
         min_amount: fees,
@@ -165,7 +169,12 @@ tx mark_shipped(
 // Release escrow — merchant collects funds after grace period has elapsed
 tx release_escrow(
     escrow_utxo: UtxoRef,
+    script_ref_utxo: UtxoRef,
 ) {
+    reference script_ref {
+        ref: script_ref_utxo,
+    }
+
     input gas {
         from: Merchant,
         min_amount: fees,
@@ -196,7 +205,12 @@ tx release_escrow(
 // Refund escrow — buyer reclaims funds after ship_deadline has passed
 tx refund_escrow(
     escrow_utxo: UtxoRef,
+    script_ref_utxo: UtxoRef,
 ) {
+    reference script_ref {
+        ref: script_ref_utxo,
+    }
+
     input gas {
         from: Buyer,
         min_amount: fees,
@@ -275,22 +289,40 @@ tx mint_badge(
     }
 }
 
-// Record an order lifecycle event on-chain via tx metadata (traceability)
+// Record an order lifecycle event on-chain via tx metadata (traceability).
+//
+// Cardano metadata limits every primitive String/Bytes value to 64 bytes, so
+// we split the payload across distinct integer labels instead of cramming the
+// whole JSON into a single value. The merchant spends one of their UTxOs and
+// the entire input value minus fees is returned (see Decision Log entry on
+// `source - fees` change-output preservation).
+//
+// Metadata layout (one entry per label):
+//   1337: event   — short ASCII tag ("paid"/"shipped"/"completed"/"cancelled")
+//   1338: order_id — UTF-8 of the UUID string (36 bytes, fits in 64)
+//   1339: ts      — Unix seconds (Int)
+//   1340: extra   — event-specific freeform bytes (tracking number, reason, or empty)
 tx record_order_event(
-    metadata_payload: Bytes,
+    event: Bytes,
+    order_id: Bytes,
+    ts: Int,
+    extra: Bytes,
 ) {
     input source {
         from: Merchant,
-        min_amount: Ada(2000000) + fees,
+        min_amount: fees,
     }
 
     output {
         to: Merchant,
-        amount: Ada(2000000),
+        amount: source - fees,
     }
 
     metadata {
-        1337: metadata_payload,
+        1337: event,
+        1338: order_id,
+        1339: ts,
+        1340: extra,
     }
 
     signers {
