@@ -76,6 +76,22 @@ For local development against dolos, use `.env.local` with `TX3_PROFILE=local`.
 
 ## How to use — happy-path lifecycle
 
+> **Two subsystems, two responsibilities.** The lifecycle is driven by two
+> independent families of scripts that you run together:
+>
+> - **Traceability (Feature A)** — `mark-order-shipped`, `mark-order-completed`,
+>   `cancel-order` (and the `paid` event from checkout). These submit
+>   metadata-only on-chain transactions and own the `orders.status` column and
+>   the `order_events` table (one row per `(order_id, event_type)`).
+> - **Escrow (Feature B)** — `escrow-mark-shipped`, `escrow-release`,
+>   `escrow-refund`. These spend/re-lock the escrow UTxO and own **only** the
+>   `escrows` table (escrow tx hashes live in `escrows.{shipped,release,refund}_tx_hash`).
+>
+> The two never write the same row, so running both for one order is correct and
+> does not collide. The `shipped`/`completed`/`cancelled` traceability event and
+> the corresponding escrow transition are **different on-chain transactions** —
+> the traceability tx records the event; the escrow tx moves the funds.
+
 A complete order lifecycle from checkout through badge minting:
 
 1. **Buyer checkout (frontend)** — the buyer adds items to cart and completes checkout via Cypher-30 wallet. The frontend submits a lock-to-script transaction and the server-fn records the `paid` traceability event.

@@ -4,12 +4,17 @@ party Merchant;
 
 policy Escrow = 0x6a3fa39242a5f61199fbe9de108d27277000e89f6a59acb6a1b42010;
 
-// Option<Int> — represents None or Some(value) for grace_period_end
+// Option<Int> — represents Some(value) or None for grace_period_end.
+// IMPORTANT: variant order MUST match Aiken's prelude `Option<a> { Some(a), None }`
+// so the Plutus constructor tags line up: Some = constr 0, None = constr 1.
+// (Declaring None first encodes None as `Constr 0 []`; the validator then reads
+// it as `Some` and calls headList on the empty field list → "Expected a non-empty
+// list but got an empty one".)
 type OptionInt {
-    None,
     Some {
         value: Int,
     },
+    None,
 }
 
 // Mirrors EscrowDatum in aiken/lib/escrow_types.ak
@@ -42,7 +47,7 @@ tx lock_escrow_ada(
 ) {
     input source {
         from: Buyer,
-        min_amount: Ada(quantity) + fees,
+        min_amount: Ada(quantity) + fees + min_utxo(change),
     }
 
     output escrow_output {
@@ -58,7 +63,7 @@ tx lock_escrow_ada(
         },
     }
 
-    output {
+    output change {
         to: Buyer,
         amount: source - Ada(quantity) - fees,
     }
@@ -85,7 +90,7 @@ tx lock_escrow_tokens(
 
     input* source {
         from: Buyer,
-        min_amount: fees + tokens + min_utxo(escrow_output),
+        min_amount: fees + tokens + min_utxo(escrow_output) + min_utxo(change),
     }
 
     output escrow_output {
@@ -101,7 +106,7 @@ tx lock_escrow_tokens(
         },
     }
 
-    output {
+    output change {
         to: Buyer,
         amount: source - tokens - min_utxo(escrow_output) - fees,
     }
@@ -124,7 +129,7 @@ tx mark_shipped(
 
     input gas {
         from: Merchant,
-        min_amount: fees,
+        min_amount: min_utxo(change) + fees,
     }
 
     input locked {
@@ -156,7 +161,7 @@ tx mark_shipped(
         },
     }
 
-    output {
+    output change {
         to: Merchant,
         amount: gas - fees,
     }
@@ -177,7 +182,7 @@ tx release_escrow(
 
     input gas {
         from: Merchant,
-        min_amount: fees,
+        min_amount: min_utxo(change) + fees,
     }
 
     input locked {
@@ -192,7 +197,7 @@ tx release_escrow(
         min_amount: fees,
     }
 
-    output {
+    output change {
         to: Merchant,
         amount: gas + locked - fees,
     }
@@ -252,7 +257,7 @@ tx mint_badge(
 
     input source {
         from: Merchant,
-        min_amount: fees + min_utxo(badge_output),
+        min_amount: fees + min_utxo(badge_output) + min_utxo(change),
     }
 
     collateral {
@@ -270,7 +275,7 @@ tx mint_badge(
         amount: badge + min_utxo(badge_output),
     }
 
-    output {
+    output change {
         to: Merchant,
         amount: source - fees - min_utxo(badge_output),
     }
@@ -310,10 +315,10 @@ tx record_order_event(
 ) {
     input source {
         from: Merchant,
-        min_amount: fees,
+        min_amount: min_utxo(change) + fees,
     }
 
-    output {
+    output change {
         to: Merchant,
         amount: source - fees,
     }

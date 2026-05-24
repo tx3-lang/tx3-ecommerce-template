@@ -3,10 +3,14 @@
  *
  * Tests the `main(args)` function extracted from the CLI entry point.
  *
+ * Scope note: escrow-release owns ONLY the `escrows` table. It does not write
+ * `orders.status` nor `order_events` (those belong to the traceability scripts),
+ * so this suite asserts the escrows UPDATE and the absence of any
+ * orders/order_events writes.
+ *
  * All external boundaries are mocked:
- *   - @supabase/supabase-js           — Supabase client (escrows SELECT, escrows UPDATE, orders UPDATE)
+ *   - @supabase/supabase-js           — Supabase client (escrows SELECT, escrows UPDATE)
  *   - @/lib/cardano/escrow            — submitReleaseEscrow
- *   - @/server-fns/order-events       — insertOrderEvent
  *   - @/lib/cardano/network           — getNetworkConfig (controls explorer URL)
  */
 
@@ -18,7 +22,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // The script does (two separate `from()` calls):
 //   supabase.from('escrows').select('*').eq('order_id', orderId).single()
 //   supabase.from('escrows').update({...}).eq('order_id', orderId)
-//   supabase.from('orders').update({ status: 'completed' }).eq('id', orderId)
 // ---------------------------------------------------------------------------
 
 const mockSingle = vi.fn();
@@ -51,17 +54,6 @@ vi.mock('@/lib/cardano/escrow', () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Mock: insertOrderEvent
-// ---------------------------------------------------------------------------
-const mockInsertOrderEvent = vi.fn();
-
-vi.mock('@/server-fns/order-events', () => ({
-	insertOrderEvent: mockInsertOrderEvent,
-	listOrderEvents: vi.fn(),
-	markEventConfirmed: vi.fn(),
-}));
-
-// ---------------------------------------------------------------------------
 // Mock: getNetworkConfig
 // ---------------------------------------------------------------------------
 const mockGetNetworkConfig = vi.fn();
@@ -88,16 +80,6 @@ const ORDER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const TX_HASH = 'cafebabe00112233deadbeef445566778899aabbccddeeff00112233445566778899';
 
 const RELEASE_RESULT = { txHash: TX_HASH };
-
-const SAMPLE_ORDER_EVENT: Database.OrderEvent = {
-	id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
-	order_id: ORDER_ID,
-	event_type: 'completed',
-	tx_hash: TX_HASH,
-	payload: { v: 1, event: 'completed' },
-	submitted_at: '2026-05-22T00:00:00Z',
-	confirmed_at: null,
-};
 
 // Elapsed grace period (grace_period_end in the past)
 const PAST_GRACE_PERIOD = new Date(Date.now() - 86400 * 1000).toISOString(); // -1 day
@@ -142,7 +124,6 @@ beforeEach(() => {
 	// Default happy-path stubs
 	mockGetNetworkConfig.mockReturnValue(STUB_NETWORK_PREVIEW);
 	mockSubmitReleaseEscrow.mockResolvedValue(RELEASE_RESULT);
-	mockInsertOrderEvent.mockResolvedValue(SAMPLE_ORDER_EVENT);
 	mockEqUpdate.mockResolvedValue({ error: null });
 
 	// Default: escrow is shipped with elapsed grace period
@@ -263,25 +244,11 @@ describe('DB updates on success', () => {
 		expect(mockEqUpdate).toHaveBeenCalledWith('order_id', ORDER_ID);
 	});
 
-	it('updates orders with status="completed"', async () => {
+	it('does NOT write orders.status nor order_events (owned by traceability)', async () => {
 		await main(['--order-id', ORDER_ID]);
 
-		expect(mockFrom).toHaveBeenCalledWith('orders');
-		expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
-		expect(mockEqUpdate).toHaveBeenCalledWith('id', ORDER_ID);
-	});
-
-	it('inserts an order_events row with event_type="completed" and the tx hash', async () => {
-		await main(['--order-id', ORDER_ID]);
-
-		expect(mockInsertOrderEvent).toHaveBeenCalledOnce();
-		expect(mockInsertOrderEvent).toHaveBeenCalledWith(
-			expect.objectContaining({
-				order_id: ORDER_ID,
-				event_type: 'completed',
-				tx_hash: TX_HASH,
-			}),
-		);
+		expect(mockFrom).not.toHaveBeenCalledWith('orders');
+		expect(mockFrom).not.toHaveBeenCalledWith('order_events');
 	});
 });
 
@@ -297,22 +264,6 @@ describe('submitReleaseEscrow failure', () => {
 		// Only escrows SELECT should have been called, not UPDATE
 		const updateCalls = mockUpdate.mock.calls;
 		expect(updateCalls).toHaveLength(0);
-	});
-
-	it('does NOT update orders when submitReleaseEscrow throws', async () => {
-		mockSubmitReleaseEscrow.mockRejectedValueOnce(new Error('ChainUnavailable: connection refused'));
-
-		await expect(main(['--order-id', ORDER_ID])).rejects.toThrow();
-
-		expect(mockUpdate).not.toHaveBeenCalled();
-	});
-
-	it('does NOT call insertOrderEvent when submitReleaseEscrow throws', async () => {
-		mockSubmitReleaseEscrow.mockRejectedValueOnce(new Error('ChainUnavailable: connection refused'));
-
-		await expect(main(['--order-id', ORDER_ID])).rejects.toThrow();
-
-		expect(mockInsertOrderEvent).not.toHaveBeenCalled();
 	});
 
 	it('propagates the chain error', async () => {

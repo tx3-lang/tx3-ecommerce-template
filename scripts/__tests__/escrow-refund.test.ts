@@ -3,10 +3,14 @@
  *
  * Tests the `main(args)` function extracted from the CLI entry point.
  *
+ * Scope note: escrow-refund owns ONLY the `escrows` table. It does not write
+ * `orders.status` nor `order_events` (those belong to the traceability scripts),
+ * so this suite asserts the escrows UPDATE and the absence of any
+ * orders/order_events writes.
+ *
  * All external boundaries are mocked:
- *   - @supabase/supabase-js           — Supabase client (escrows SELECT, escrows UPDATE, orders UPDATE)
+ *   - @supabase/supabase-js           — Supabase client (escrows SELECT, escrows UPDATE)
  *   - @/lib/cardano/escrow            — submitRefundEscrow
- *   - @/server-fns/order-events       — insertOrderEvent
  *   - @/lib/cardano/network           — getNetworkConfig (controls explorer URL)
  */
 
@@ -18,7 +22,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // The script does:
 //   supabase.from('escrows').select('*').eq('order_id', orderId).single()
 //   supabase.from('escrows').update({...}).eq('order_id', orderId)
-//   supabase.from('orders').update({ status: 'cancelled' }).eq('id', orderId)
 // ---------------------------------------------------------------------------
 
 const mockSingle = vi.fn();
@@ -48,17 +51,6 @@ const mockSubmitRefundEscrow = vi.fn();
 
 vi.mock('@/lib/cardano/escrow', () => ({
 	submitRefundEscrow: mockSubmitRefundEscrow,
-}));
-
-// ---------------------------------------------------------------------------
-// Mock: insertOrderEvent
-// ---------------------------------------------------------------------------
-const mockInsertOrderEvent = vi.fn();
-
-vi.mock('@/server-fns/order-events', () => ({
-	insertOrderEvent: mockInsertOrderEvent,
-	listOrderEvents: vi.fn(),
-	markEventConfirmed: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------
@@ -92,16 +84,6 @@ const BUYER_KEY_HEX = 'a'.repeat(64);
 const BUYER_ADDRESS = 'addr_test1vqyqxqzqgxqyqyqgxqyqyqgxqyqyqgxqyqyqgxqyqgxq8zsh3w';
 
 const REFUND_RESULT = { txHash: TX_HASH };
-
-const SAMPLE_ORDER_EVENT: Database.OrderEvent = {
-	id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
-	order_id: ORDER_ID,
-	event_type: 'cancelled',
-	tx_hash: TX_HASH,
-	payload: { v: 1, event: 'cancelled' },
-	submitted_at: '2026-05-22T00:00:00Z',
-	confirmed_at: null,
-};
 
 // Ship deadline in the past (deadline exceeded → can refund)
 const PAST_SHIP_DEADLINE = new Date(Date.now() - 86400 * 1000).toISOString(); // -1 day
@@ -146,7 +128,6 @@ beforeEach(() => {
 	// Default happy-path stubs
 	mockGetNetworkConfig.mockReturnValue(STUB_NETWORK_PREVIEW);
 	mockSubmitRefundEscrow.mockResolvedValue(REFUND_RESULT);
-	mockInsertOrderEvent.mockResolvedValue(SAMPLE_ORDER_EVENT);
 	mockEqUpdate.mockResolvedValue({ error: null });
 
 	// Default: escrow is pending with exceeded ship deadline
@@ -270,28 +251,11 @@ describe('DB updates on success', () => {
 		expect(mockEqUpdate).toHaveBeenCalledWith('order_id', ORDER_ID);
 	});
 
-	it('updates orders with status="cancelled"', async () => {
+	it('does NOT write orders.status nor order_events (owned by traceability)', async () => {
 		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS]);
 
-		expect(mockFrom).toHaveBeenCalledWith('orders');
-		expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled' }));
-		expect(mockEqUpdate).toHaveBeenCalledWith('id', ORDER_ID);
-	});
-
-	it('inserts an order_events row with event_type="cancelled", tx hash, and reason="ship_deadline_exceeded"', async () => {
-		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS]);
-
-		expect(mockInsertOrderEvent).toHaveBeenCalledOnce();
-		expect(mockInsertOrderEvent).toHaveBeenCalledWith(
-			expect.objectContaining({
-				order_id: ORDER_ID,
-				event_type: 'cancelled',
-				tx_hash: TX_HASH,
-				payload: expect.objectContaining({
-					reason: 'ship_deadline_exceeded',
-				}),
-			}),
-		);
+		expect(mockFrom).not.toHaveBeenCalledWith('orders');
+		expect(mockFrom).not.toHaveBeenCalledWith('order_events');
 	});
 });
 
@@ -307,22 +271,6 @@ describe('submitRefundEscrow failure', () => {
 		// Only escrows SELECT should have been called, not UPDATE
 		const updateCalls = mockUpdate.mock.calls;
 		expect(updateCalls).toHaveLength(0);
-	});
-
-	it('does NOT update orders when submitRefundEscrow throws', async () => {
-		mockSubmitRefundEscrow.mockRejectedValueOnce(new Error('ChainUnavailable: connection refused'));
-
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow();
-
-		expect(mockUpdate).not.toHaveBeenCalled();
-	});
-
-	it('does NOT call insertOrderEvent when submitRefundEscrow throws', async () => {
-		mockSubmitRefundEscrow.mockRejectedValueOnce(new Error('ChainUnavailable: connection refused'));
-
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow();
-
-		expect(mockInsertOrderEvent).not.toHaveBeenCalled();
 	});
 
 	it('propagates the chain error', async () => {

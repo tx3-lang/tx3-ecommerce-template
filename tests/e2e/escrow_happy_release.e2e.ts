@@ -1,11 +1,16 @@
 /**
  * E2E: escrow_happy_release
  *
- * Scenario: lock → +61s → mark-shipped → +61s → release
+ * Scenario (full combined walkthrough — traceability + escrow):
+ *   lock → mark-order-shipped (traceability) + escrow-mark-shipped (escrow)
+ *        → +61s → escrow-release (escrow) → mark-order-completed (traceability)
+ *
+ * Ownership: traceability scripts own orders.status + order_events (Feature A);
+ * escrow scripts own the escrows table (Feature B).
  *
  * Asserts:
- *   - orders.status = 'completed'
- *   - escrows.status = 'released'
+ *   - orders.status = 'completed'        (set by mark-order-completed)
+ *   - escrows.status = 'released'        (set by escrow-release)
  *   - 3 order_events rows exist (paid, shipped, completed)
  *   - All tx hashes are non-empty strings
  *
@@ -23,6 +28,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { main as markShipped } from '../../scripts/escrow-mark-shipped.js';
 import { main as releaseEscrow } from '../../scripts/escrow-release.js';
+// Traceability scripts own orders.status + order_events (Feature A); the escrow
+// scripts own only the escrows table (Feature B). The full walkthrough runs both.
+import { main as markOrderCompleted } from '../../scripts/mark-order-completed.js';
+import { main as markOrderShipped } from '../../scripts/mark-order-shipped.js';
 import {
 	advanceTime,
 	cleanupOrder,
@@ -95,7 +104,17 @@ describe.skipIf(SKIP)(`escrow_happy_release.e2e${SKIP ? ` [SKIPPED: ${SKIP_REASO
 		// -----------------------------------------------------------------------
 
 		// -----------------------------------------------------------------------
-		// Step 3: Mark shipped
+		// Step 3a: Traceability — record the `shipped` event on chain.
+		//   This owns orders.status + order_events('shipped').
+		// -----------------------------------------------------------------------
+		await markOrderShipped([`--order-id`, orderId, `--tracking`, `E2E-TRACK-001`]);
+
+		const shippedOrder = await getOrderRow(orderId);
+		expect(shippedOrder.status).toBe('shipped');
+
+		// -----------------------------------------------------------------------
+		// Step 3b: Escrow state machine — Pending → Shipped.
+		//   This owns the escrows table only (no orders / order_events writes).
 		// -----------------------------------------------------------------------
 		const shippedResult = await markShipped([`--order-id`, orderId]);
 		expect(shippedResult.txHash).toBeTruthy();
@@ -106,28 +125,31 @@ describe.skipIf(SKIP)(`escrow_happy_release.e2e${SKIP ? ` [SKIPPED: ${SKIP_REASO
 		expect(shippedEscrow!.shipped_tx_hash).toBeTruthy();
 		expect(shippedEscrow!.grace_period_end).not.toBeNull();
 
-		const shippedOrder = await getOrderRow(orderId);
-		expect(shippedOrder.status).toBe('shipped');
-
 		// -----------------------------------------------------------------------
 		// Step 4: Advance past the grace period (61s > 60s grace period)
 		// -----------------------------------------------------------------------
 		await advanceTime(61);
 
 		// -----------------------------------------------------------------------
-		// Step 5: Release escrow
+		// Step 5: Release escrow (escrows table only — Shipped → Released)
 		// -----------------------------------------------------------------------
 		const releaseResult = await releaseEscrow([`--order-id`, orderId]);
 		expect(releaseResult.txHash).toBeTruthy();
 		expect(typeof releaseResult.txHash).toBe('string');
 
-		// -----------------------------------------------------------------------
-		// Step 6: Verify final DB state
-		// -----------------------------------------------------------------------
 		const finalEscrow = await getEscrowRow(orderId);
 		expect(finalEscrow!.status).toBe('released');
 		expect(finalEscrow!.release_tx_hash).toBeTruthy();
 
+		// -----------------------------------------------------------------------
+		// Step 6: Traceability — record the `completed` event on chain.
+		//   This owns orders.status + order_events('completed').
+		// -----------------------------------------------------------------------
+		await markOrderCompleted([`--order-id`, orderId]);
+
+		// -----------------------------------------------------------------------
+		// Step 7: Verify final DB state
+		// -----------------------------------------------------------------------
 		const finalOrder = await getOrderRow(orderId);
 		expect(finalOrder.status).toBe('completed');
 

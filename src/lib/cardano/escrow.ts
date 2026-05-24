@@ -123,6 +123,23 @@ function isTokenValue(v: EscrowValue): v is TokenValue {
 }
 
 // ---------------------------------------------------------------------------
+// UtxoRef wire encoding
+// ---------------------------------------------------------------------------
+
+/**
+ * Encodes a UTxO reference into the tx3 TRP wire format: `"<txidHex>#<index>"`.
+ *
+ * The codegen `Client` forwards resolve args to TRP verbatim — it does NOT run
+ * them through the SDK's `toJson`, which is what normally serializes a UtxoRef
+ * ArgValue to this string form (see `utxoRefToWire` in tx3-sdk). Passing the
+ * object form `{ txid, index }` makes the server reject the arg with
+ * `(-32005) value is not a utxo ref`. Callers must send the string form.
+ */
+function toUtxoRefWire(txid: string, index: number): string {
+	return `${txid}#${index}`;
+}
+
+// ---------------------------------------------------------------------------
 // Address utilities
 // ---------------------------------------------------------------------------
 
@@ -186,7 +203,8 @@ function hexAddressToBech32(addressHex: string): string {
  * Plutus constr(0, [buyerPkh, merchantPkh, orderId, paidAt, shipDeadline, None])
  * is encoded as CBOR tag 121 wrapping a 6-element array.
  *
- * `grace_period_end` is always `OptionInt::None` on lock — CBOR tag 121, [].
+ * `grace_period_end` is always `None` on lock. Aiken's prelude `Option` orders
+ * `Some` first, so None = Plutus CONSTR 1 = CBOR tag 122, [].
  */
 function buildDatumCbor(
 	buyerPkh: Buffer,
@@ -195,7 +213,7 @@ function buildDatumCbor(
 	paidAt: number,
 	shipDeadline: number,
 ): string {
-	const noneConstr = new CborTag([], 121);
+	const noneConstr = new CborTag([], 122);
 	const datum = new CborTag(
 		[buyerPkh, merchantPkh, Buffer.from(orderId, 'utf8'), paidAt, shipDeadline, noneConstr],
 		121,
@@ -360,7 +378,8 @@ export async function submitLockEscrow(
  * Builds the CBOR-encoded EscrowDatum for the shipped state.
  *
  * Same structure as the lock datum but `grace_period_end` is
- * `OptionInt::Some(gracePeriodEndMs)` — CBOR tag 122 wrapping the value.
+ * `Some(gracePeriodEndMs)`. Aiken's prelude `Option` orders `Some` first, so
+ * Some = Plutus CONSTR 0 = CBOR tag 121 wrapping the value.
  */
 function buildShippedDatumCbor(
 	buyerPkh: Buffer,
@@ -370,8 +389,8 @@ function buildShippedDatumCbor(
 	shipDeadline: number,
 	gracePeriodEndMs: number,
 ): string {
-	// OptionInt::Some(value) = CBOR tag 122 (Plutus CONSTR 1) wrapping [value]
-	const someConstr = new CborTag([gracePeriodEndMs], 122);
+	// Some(value) = CBOR tag 121 (Plutus CONSTR 0) wrapping [value]
+	const someConstr = new CborTag([gracePeriodEndMs], 121);
 	const datum = new CborTag([buyerPkh, merchantPkh, orderId, paidAt, shipDeadline, someConstr], 121);
 	return cborEncode(datum).toString('hex');
 }
@@ -402,6 +421,8 @@ async function resolveSignAndSubmitWithBackendSigner(
 	});
 
 	const envelope = await buildTx(client);
+
+	console.log(envelope);
 
 	const witnesses = getMerchantSigner().sign(envelope.hash);
 
@@ -437,9 +458,9 @@ export async function submitMarkShipped(orderId: string): Promise<MarkShippedRes
 	const shippedAt = Date.now();
 	const gracePeriodEnd = shippedAt + getGracePeriodSeconds() * 1000;
 
-	const escrowUtxo = { txid: escrow.utxo_tx_hash, index: escrow.utxo_output_index };
+	const escrowUtxo = toUtxoRefWire(escrow.utxo_tx_hash, escrow.utxo_output_index);
 	const scriptRefUtxoRaw = getScriptRefUtxo();
-	const scriptRefUtxo = { txid: scriptRefUtxoRaw.txHash, index: scriptRefUtxoRaw.outputIndex };
+	const scriptRefUtxo = toUtxoRefWire(scriptRefUtxoRaw.txHash, scriptRefUtxoRaw.outputIndex);
 
 	const envelope = await resolveSignAndSubmitWithBackendSigner(client =>
 		client.markShipped({
@@ -482,9 +503,9 @@ export async function submitReleaseEscrow(orderId: string): Promise<{ txHash: st
 		throw new Error(`ESCROW_NOT_FOUND: order_id=${orderId}`);
 	}
 
-	const escrowUtxo = { txid: escrow.utxo_tx_hash, index: escrow.utxo_output_index };
+	const escrowUtxo = toUtxoRefWire(escrow.utxo_tx_hash, escrow.utxo_output_index);
 	const scriptRefUtxoRaw = getScriptRefUtxo();
-	const scriptRefUtxo = { txid: scriptRefUtxoRaw.txHash, index: scriptRefUtxoRaw.outputIndex };
+	const scriptRefUtxo = toUtxoRefWire(scriptRefUtxoRaw.txHash, scriptRefUtxoRaw.outputIndex);
 
 	const envelope = await resolveSignAndSubmitWithBackendSigner(client =>
 		client.releaseEscrow({
@@ -528,9 +549,9 @@ export async function submitRefundEscrow(
 		merchant: merchantAddress,
 	});
 
-	const escrowUtxo = { txid: escrow.utxo_tx_hash, index: escrow.utxo_output_index };
+	const escrowUtxo = toUtxoRefWire(escrow.utxo_tx_hash, escrow.utxo_output_index);
 	const scriptRefUtxoRaw = getScriptRefUtxo();
-	const scriptRefUtxo = { txid: scriptRefUtxoRaw.txHash, index: scriptRefUtxoRaw.outputIndex };
+	const scriptRefUtxo = toUtxoRefWire(scriptRefUtxoRaw.txHash, scriptRefUtxoRaw.outputIndex);
 
 	const envelope = await client.refundEscrow({
 		escrow_utxo: escrowUtxo,

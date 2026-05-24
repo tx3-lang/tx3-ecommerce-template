@@ -4,17 +4,23 @@
  * Usage:
  *   pnpm tsx scripts/escrow-release.ts --order-id <uuid>
  *
+ * Scope (Feature B — escrow state machine ONLY):
+ *   This script owns the `escrows` table and the on-chain escrow UTxO. It does
+ *   NOT write `orders.status` nor `order_events` — the `completed` traceability
+ *   event and the order status flip belong to the traceability scripts
+ *   (Feature A, e.g. mark-order-completed.ts). This keeps the two subsystems
+ *   from double-writing the unique (order_id, event_type) row in order_events.
+ *
  * What it does:
  *   1. Validates escrow state: status='shipped' AND NOW() >= grace_period_end.
  *   2. Calls submitReleaseEscrow(orderId) to submit the on-chain state transition.
- *   3. On success: updates escrows (status='released', release_tx_hash) +
- *      orders.status='completed' + inserts order_events row with event_type='completed'.
+ *   3. On success: updates escrows (status='released', release_tx_hash).
  *   4. On chain failure: exits non-zero without touching the DB.
  *   5. Prints "Released! Tx: <hash> | Explorer: <url>" to stdout.
  *
  * Atomicity trade-off (per Decision Log A9):
- *   submitReleaseEscrow → UPDATE escrows → UPDATE orders → insertOrderEvent
- *   A chain failure before the DB writes leaves the DB in its prior state.
+ *   submitReleaseEscrow → UPDATE escrows
+ *   A chain failure before the DB write leaves the DB in its prior state.
  */
 
 import { parseArgs } from 'node:util';
@@ -23,7 +29,6 @@ import { createClient } from '@supabase/supabase-js';
 
 import { submitReleaseEscrow } from '@/lib/cardano/escrow';
 import { getNetworkConfig } from '@/lib/cardano/network';
-import { insertOrderEvent } from '@/server-fns/order-events';
 
 import { buildExplorerUrl } from './lib/transition.js';
 
@@ -143,36 +148,7 @@ export async function main(args: string[]): Promise<EscrowReleaseResult> {
 	}
 
 	// -----------------------------------------------------------------------
-	// Step 5: Update orders.status = 'completed'
-	// -----------------------------------------------------------------------
-	const { error: orderUpdateError } = await supabase
-		.from('orders')
-		.update({ status: 'completed' })
-		.eq('id', orderId);
-
-	if (orderUpdateError) {
-		throw new Error(
-			`DB_UPDATE_FAILED: [escrow-release] failed to update order status — ${orderUpdateError.message}`,
-		);
-	}
-
-	// -----------------------------------------------------------------------
-	// Step 6: Insert order_events row
-	//   If this fails, the order IS already transitioned but the event row is
-	//   missing — the reconciler can re-discover from the chain.
-	// -----------------------------------------------------------------------
-	await insertOrderEvent({
-		order_id: orderId,
-		event_type: 'completed',
-		tx_hash: result.txHash,
-		payload: {
-			event: 'completed',
-			tx_hash: result.txHash,
-		},
-	});
-
-	// -----------------------------------------------------------------------
-	// Step 7: Build and return result
+	// Step 5: Build and return result
 	// -----------------------------------------------------------------------
 	const { profile } = getNetworkConfig();
 	const explorerUrl = buildExplorerUrl(profile, result.txHash);

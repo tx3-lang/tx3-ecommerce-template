@@ -22,6 +22,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { main as refundEscrow } from '../../scripts/escrow-refund.js';
+// Traceability owns orders.status + order_events (Feature A); escrow scripts own
+// the escrows table (Feature B). The full walkthrough runs both.
+import { main as cancelOrder } from '../../scripts/cancel-order.js';
 import {
 	advanceTime,
 	cleanupOrder,
@@ -74,19 +77,25 @@ describe.skipIf(SKIP)(`escrow_refund_timeout.e2e${SKIP ? ` [SKIPPED: ${SKIP_REAS
 		await advanceTime(61);
 
 		// -----------------------------------------------------------------------
-		// Step 3: Submit refund
+		// Step 3: Submit refund (escrows table only — Pending → Refunded)
 		// -----------------------------------------------------------------------
 		const refundResult = await refundEscrow([`--order-id`, orderId, `--buyer-key`, buyerKey]);
 		expect(refundResult.txHash).toBeTruthy();
 
-		// -----------------------------------------------------------------------
-		// Step 4: Verify final DB state
-		// -----------------------------------------------------------------------
 		const finalEscrow = await getEscrowRow(orderId);
 		expect(finalEscrow!.status).toBe('refunded');
 		expect(finalEscrow!.refund_tx_hash).toBeTruthy();
 		expect(finalEscrow!.refund_tx_hash).toBe(refundResult.txHash);
 
+		// -----------------------------------------------------------------------
+		// Step 4: Traceability — record the `cancelled` event on chain.
+		//   This owns orders.status + order_events('cancelled').
+		// -----------------------------------------------------------------------
+		await cancelOrder([`--order-id`, orderId, `--reason`, `ship_deadline_exceeded`]);
+
+		// -----------------------------------------------------------------------
+		// Step 5: Verify final DB state
+		// -----------------------------------------------------------------------
 		const finalOrder = await getOrderRow(orderId);
 		expect(finalOrder.status).toBe('cancelled');
 

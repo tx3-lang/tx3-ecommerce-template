@@ -239,7 +239,7 @@ export async function insertLockPaymentFixture(input: LockPaymentFixtureInput): 
 		orderId,
 		lockTxHash,
 		lockOutputIndex = 0,
-		datumCbor = 'd87980', // Aiken Constr 0 [] = pending (None)
+		datumCbor = 'd87a80', // Aiken None = Constr 1 [] = pending (Option orders Some first)
 		scriptAddress = process.env.E2E_SCRIPT_ADDRESS ?? 'addr_test1_e2e_script',
 		buyerPkh = 'e2e_buyer_pkh',
 		merchantPkh = 'e2e_merchant_pkh',

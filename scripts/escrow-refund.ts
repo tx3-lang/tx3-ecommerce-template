@@ -4,13 +4,18 @@
  * Usage:
  *   pnpm tsx scripts/escrow-refund.ts --order-id <uuid> --buyer-key <hex>
  *
+ * Scope (Feature B — escrow state machine ONLY):
+ *   This script owns the `escrows` table and the on-chain escrow UTxO. It does
+ *   NOT write `orders.status` nor `order_events` — the `cancelled` traceability
+ *   event and the order status flip belong to the traceability scripts
+ *   (Feature A, e.g. cancel-order.ts). This keeps the two subsystems from
+ *   double-writing the unique (order_id, event_type) row in order_events.
+ *
  * What it does:
  *   1. Validates escrow state: status='pending' AND NOW() >= ship_deadline.
  *   2. Constructs a buyer signer from the --buyer-key hex private key (Ed25519).
  *   3. Calls submitRefundEscrow(orderId, buyerSigner) to submit the on-chain refund.
- *   4. On success: updates escrows (status='refunded', refund_tx_hash) +
- *      orders.status='cancelled' + inserts order_events row with
- *      event_type='cancelled' and data.reason='ship_deadline_exceeded'.
+ *   4. On success: updates escrows (status='refunded', refund_tx_hash).
  *   5. On chain failure: exits non-zero without touching the DB.
  *   6. Prints "Refunded! Tx: <hash> | Explorer: <url>" to stdout.
  *
@@ -25,8 +30,8 @@
  *   be triggered via the buyer's browser wallet (CIP-30).
  *
  * Atomicity trade-off (per Decision Log A9):
- *   submitRefundEscrow → UPDATE escrows → UPDATE orders → insertOrderEvent
- *   A chain failure before the DB writes leaves the DB in its prior state.
+ *   submitRefundEscrow → UPDATE escrows
+ *   A chain failure before the DB write leaves the DB in its prior state.
  */
 
 import { parseArgs } from 'node:util';
@@ -38,7 +43,6 @@ import { Buffer } from 'buffer';
 import { submitRefundEscrow } from '@/lib/cardano/escrow';
 import type { BuyerSigner } from '@/lib/cardano/escrow';
 import { getNetworkConfig } from '@/lib/cardano/network';
-import { insertOrderEvent } from '@/server-fns/order-events';
 
 import { buildExplorerUrl } from './lib/transition.js';
 
@@ -212,37 +216,7 @@ export async function main(args: string[]): Promise<EscrowRefundResult> {
 	}
 
 	// -----------------------------------------------------------------------
-	// Step 6: Update orders.status = 'cancelled'
-	// -----------------------------------------------------------------------
-	const { error: orderUpdateError } = await supabase
-		.from('orders')
-		.update({ status: 'cancelled' })
-		.eq('id', orderId);
-
-	if (orderUpdateError) {
-		throw new Error(
-			`DB_UPDATE_FAILED: [escrow-refund] failed to update order status — ${orderUpdateError.message}`,
-		);
-	}
-
-	// -----------------------------------------------------------------------
-	// Step 7: Insert order_events row
-	//   If this fails, the order IS already transitioned but the event row is
-	//   missing — the reconciler can re-discover from the chain.
-	// -----------------------------------------------------------------------
-	await insertOrderEvent({
-		order_id: orderId,
-		event_type: 'cancelled',
-		tx_hash: result.txHash,
-		payload: {
-			event: 'cancelled',
-			tx_hash: result.txHash,
-			reason: 'ship_deadline_exceeded',
-		},
-	});
-
-	// -----------------------------------------------------------------------
-	// Step 8: Build and return result
+	// Step 6: Build and return result
 	// -----------------------------------------------------------------------
 	const { profile } = getNetworkConfig();
 	const explorerUrl = buildExplorerUrl(profile, result.txHash);

@@ -111,7 +111,7 @@ const STUB_ESCROW: Database.Escrow = {
 	paid_at: '1716000000000',
 	ship_deadline: '1718592000000',
 	grace_period_end: null,
-	datum_cbor: 'd87980',
+	datum_cbor: 'd87a80',
 	shipped_tx_hash: null,
 	release_tx_hash: null,
 	refund_tx_hash: null,
@@ -363,10 +363,10 @@ describe('submitLockEscrow — ADA value', () => {
 			expect(result.datumCbor).toMatch(/^[0-9a-f]+$/);
 		});
 
-		it('datumCbor encodes as Plutus CONSTR tag 121 with None grace_period_end', async () => {
+		it('datumCbor encodes EscrowDatum as CONSTR 0 with None (CONSTR 1) grace_period_end', async () => {
 			const result = await submitLockEscrow('order-datum-cbor', ADA_VALUE, STUB_BUYER_SIGNER);
 
-			// CBOR tag 121 (Plutus CONSTR 0) is encoded as d879 prefix
+			// The EscrowDatum struct itself is CONSTR 0 = CBOR tag 121 (d879 prefix)
 			expect(result.datumCbor.startsWith('d879')).toBe(true);
 
 			// Decode and verify structural elements
@@ -380,13 +380,14 @@ describe('submitLockEscrow — ADA value', () => {
 			expect(Array.isArray(decoded.value)).toBe(true);
 			expect((decoded.value as unknown[]).length).toBe(6);
 
-			// grace_period_end (last field) must be OptionInt::None = CONSTR 121 with empty array
+			// grace_period_end (last field) must be None. Aiken's `Option` orders Some
+			// first, so None = Plutus CONSTR 1 = CBOR tag 122 with an empty array.
 			const gracePeriodEnd = (decoded.value as { tag: number; value: unknown[] }[])[5];
-			expect(gracePeriodEnd.tag).toBe(121);
+			expect(gracePeriodEnd.tag).toBe(122);
 			expect(gracePeriodEnd.value).toEqual([]);
 
-			// The raw None encoding in hex must be d87980 (tag 121, empty array)
-			const noneHex = 'd87980';
+			// The raw None encoding in hex must be d87a80 (tag 122, empty array)
+			const noneHex = 'd87a80';
 			expect(result.datumCbor).toContain(noneHex);
 		});
 
@@ -552,14 +553,14 @@ describe('submitMarkShipped', () => {
 			await submitMarkShipped('order-ms-3');
 
 			const args = mockMarkShipped.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.escrow_utxo).toMatchObject({ txid: STUB_ESCROW.utxo_tx_hash, index: STUB_ESCROW.utxo_output_index });
+			expect(args.escrow_utxo).toBe(`${STUB_ESCROW.utxo_tx_hash}#${STUB_ESCROW.utxo_output_index}`);
 		});
 
 		it('passes scriptRefUtxo from getScriptRefUtxo()', async () => {
 			await submitMarkShipped('order-ms-script-ref');
 
 			const args = mockMarkShipped.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.script_ref_utxo).toMatchObject({ txid: STUB_SCRIPT_REF_UTXO.txHash, index: STUB_SCRIPT_REF_UTXO.outputIndex });
+			expect(args.script_ref_utxo).toBe(`${STUB_SCRIPT_REF_UTXO.txHash}#${STUB_SCRIPT_REF_UTXO.outputIndex}`);
 		});
 
 		it('passes shippedAt as current Unix timestamp in milliseconds (within 2s window)', async () => {
@@ -666,9 +667,10 @@ describe('submitMarkShipped', () => {
 			// 6 fields
 			expect((decoded.value as unknown[]).length).toBe(6);
 
-			// grace_period_end (last field) must be OptionInt::Some = CONSTR 122 wrapping the ms value
+			// grace_period_end (last field) must be Some(ms). Aiken's `Option` orders
+			// Some first, so Some = Plutus CONSTR 0 = CBOR tag 121 wrapping the ms value.
 			const gracePeriodEnd = (decoded.value as { tag: number; value: unknown[] }[])[5];
-			expect(gracePeriodEnd.tag).toBe(122);
+			expect(gracePeriodEnd.tag).toBe(121);
 			expect(Array.isArray(gracePeriodEnd.value)).toBe(true);
 			expect((gracePeriodEnd.value as unknown[]).length).toBe(1);
 
@@ -729,14 +731,14 @@ describe('submitReleaseEscrow', () => {
 			await submitReleaseEscrow('order-rel-3');
 
 			const args = mockReleaseEscrow.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.escrow_utxo).toMatchObject({ txid: STUB_ESCROW.utxo_tx_hash, index: STUB_ESCROW.utxo_output_index });
+			expect(args.escrow_utxo).toBe(`${STUB_ESCROW.utxo_tx_hash}#${STUB_ESCROW.utxo_output_index}`);
 		});
 
 		it('passes scriptRefUtxo from getScriptRefUtxo()', async () => {
 			await submitReleaseEscrow('order-rel-script-ref');
 
 			const args = mockReleaseEscrow.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.script_ref_utxo).toMatchObject({ txid: STUB_SCRIPT_REF_UTXO.txHash, index: STUB_SCRIPT_REF_UTXO.outputIndex });
+			expect(args.script_ref_utxo).toBe(`${STUB_SCRIPT_REF_UTXO.txHash}#${STUB_SCRIPT_REF_UTXO.outputIndex}`);
 		});
 	});
 
@@ -814,14 +816,14 @@ describe('submitRefundEscrow', () => {
 			await submitRefundEscrow('order-ref-3', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32);
 
 			const args = mockRefundEscrow.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.escrow_utxo).toMatchObject({ txid: STUB_ESCROW.utxo_tx_hash, index: STUB_ESCROW.utxo_output_index });
+			expect(args.escrow_utxo).toBe(`${STUB_ESCROW.utxo_tx_hash}#${STUB_ESCROW.utxo_output_index}`);
 		});
 
 		it('passes scriptRefUtxo from getScriptRefUtxo()', async () => {
 			await submitRefundEscrow('order-ref-script-ref', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32);
 
 			const args = mockRefundEscrow.mock.calls[0][0] as Record<string, unknown>;
-			expect(args.script_ref_utxo).toMatchObject({ txid: STUB_SCRIPT_REF_UTXO.txHash, index: STUB_SCRIPT_REF_UTXO.outputIndex });
+			expect(args.script_ref_utxo).toBe(`${STUB_SCRIPT_REF_UTXO.txHash}#${STUB_SCRIPT_REF_UTXO.outputIndex}`);
 		});
 	});
 

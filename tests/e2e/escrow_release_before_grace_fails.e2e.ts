@@ -82,8 +82,10 @@ describe.skipIf(SKIP)(
 			expect(unchangedEscrow!.status).toBe('shipped');
 			expect(unchangedEscrow!.release_tx_hash).toBeNull();
 
+			// orders.status stays 'paid': only escrow scripts ran here, and they no
+			// longer touch orders.status (that is the traceability scripts' job).
 			const unchangedOrder = await getOrderRow(orderId);
-			expect(unchangedOrder.status).toBe('shipped');
+			expect(unchangedOrder.status).toBe('paid');
 		}, 60_000);
 	},
 );

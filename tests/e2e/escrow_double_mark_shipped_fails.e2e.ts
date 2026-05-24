@@ -82,10 +82,13 @@ describe.skipIf(SKIP)(
 			// The shipped_tx_hash is the first tx hash (not overwritten by second attempt)
 			expect(unchangedEscrow!.shipped_tx_hash).toBe(firstResult.txHash);
 
-			// Exactly 2 events: paid + shipped (no duplicate shipped event)
+			// escrow-mark-shipped no longer writes order_events (the shipped
+			// traceability event is owned by mark-order-shipped). The state-check
+			// rejection above is what prevents a double transition; there are no
+			// escrow-authored shipped events to duplicate.
 			const events = await getOrderEvents(orderId);
 			const shippedEvents = events.filter(e => e.event_type === 'shipped');
-			expect(shippedEvents).toHaveLength(1);
+			expect(shippedEvents).toHaveLength(0);
 		}, 60_000);
 	},
 );

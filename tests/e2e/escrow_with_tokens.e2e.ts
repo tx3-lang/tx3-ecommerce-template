@@ -37,6 +37,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { main as markShipped } from '../../scripts/escrow-mark-shipped.js';
 import { main as releaseEscrow } from '../../scripts/escrow-release.js';
+// Traceability owns orders.status + order_events (Feature A); escrow scripts own
+// the escrows table (Feature B). The full walkthrough runs both.
+import { main as markOrderCompleted } from '../../scripts/mark-order-completed.js';
+import { main as markOrderShipped } from '../../scripts/mark-order-shipped.js';
 import {
 	advanceTime,
 	cleanupOrder,
@@ -90,7 +94,8 @@ describe.skipIf(SKIP)(
 				lockTxHash,
 				// In a token escrow, the datum is identical to ADA escrow at the
 				// Pending state — the token info is in the UTxO value, not datum.
-				datumCbor: 'd87980',
+				// Pending None = Aiken Constr 1 [] = CBOR d87a80.
+				datumCbor: 'd87a80',
 			});
 
 			// Verify initial state
@@ -101,7 +106,15 @@ describe.skipIf(SKIP)(
 			expect(initialOrder.status).toBe('paid');
 
 			// -----------------------------------------------------------------------
-			// Step 2: Mark shipped
+			// Step 2a: Traceability — record `shipped` (orders.status + order_events)
+			// -----------------------------------------------------------------------
+			await markOrderShipped([`--order-id`, orderId, `--tracking`, `E2E-TOKEN-001`]);
+
+			const shippedOrder = await getOrderRow(orderId);
+			expect(shippedOrder.status).toBe('shipped');
+
+			// -----------------------------------------------------------------------
+			// Step 2b: Escrow state machine — Pending → Shipped (escrows table only)
 			// -----------------------------------------------------------------------
 			const shippedResult = await markShipped([`--order-id`, orderId]);
 			expect(shippedResult.txHash).toBeTruthy();
@@ -115,19 +128,24 @@ describe.skipIf(SKIP)(
 			await advanceTime(61);
 
 			// -----------------------------------------------------------------------
-			// Step 4: Release escrow
+			// Step 4: Release escrow (escrows table only — Shipped → Released)
 			// -----------------------------------------------------------------------
 			const releaseResult = await releaseEscrow([`--order-id`, orderId]);
 			expect(releaseResult.txHash).toBeTruthy();
 
-			// -----------------------------------------------------------------------
-			// Step 5: Verify DB final state
-			// -----------------------------------------------------------------------
 			const finalEscrow = await getEscrowRow(orderId);
 			expect(finalEscrow!.status).toBe('released');
 			expect(finalEscrow!.release_tx_hash).toBeTruthy();
 			expect(finalEscrow!.release_tx_hash).toBe(releaseResult.txHash);
 
+			// -----------------------------------------------------------------------
+			// Step 5: Traceability — record `completed` (orders.status + order_events)
+			// -----------------------------------------------------------------------
+			await markOrderCompleted([`--order-id`, orderId]);
+
+			// -----------------------------------------------------------------------
+			// Step 6: Verify DB final state
+			// -----------------------------------------------------------------------
 			const finalOrder = await getOrderRow(orderId);
 			expect(finalOrder.status).toBe('completed');
 

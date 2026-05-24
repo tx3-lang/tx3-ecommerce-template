@@ -3,10 +3,14 @@
  *
  * Tests the `main(args)` function extracted from the CLI entry point.
  *
+ * Scope note: escrow-mark-shipped owns ONLY the `escrows` table. It does not
+ * write `orders.status` nor `order_events` (those belong to the traceability
+ * scripts), so this suite asserts the escrows UPDATE and the absence of any
+ * orders/order_events writes.
+ *
  * All external boundaries are mocked:
- *   - @supabase/supabase-js           — Supabase client (escrows SELECT, escrows UPDATE, orders UPDATE)
+ *   - @supabase/supabase-js           — Supabase client (escrows SELECT, escrows UPDATE)
  *   - @/lib/cardano/escrow            — submitMarkShipped
- *   - @/server-fns/order-events       — insertOrderEvent
  *   - @/lib/cardano/network           — getNetworkConfig (controls explorer URL)
  *   - @/lib/cardano/escrow-policy     — getGracePeriodSeconds
  */
@@ -19,7 +23,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // The script does (two separate `from()` calls):
 //   supabase.from('escrows').select('*').eq('order_id', orderId).single()
 //   supabase.from('escrows').update({...}).eq('order_id', orderId)
-//   supabase.from('orders').update({ status: 'shipped' }).eq('id', orderId)
 // ---------------------------------------------------------------------------
 
 const mockSingle = vi.fn();
@@ -49,17 +52,6 @@ const mockSubmitMarkShipped = vi.fn();
 
 vi.mock('@/lib/cardano/escrow', () => ({
 	submitMarkShipped: mockSubmitMarkShipped,
-}));
-
-// ---------------------------------------------------------------------------
-// Mock: insertOrderEvent
-// ---------------------------------------------------------------------------
-const mockInsertOrderEvent = vi.fn();
-
-vi.mock('@/server-fns/order-events', () => ({
-	insertOrderEvent: mockInsertOrderEvent,
-	listOrderEvents: vi.fn(),
-	markEventConfirmed: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------
@@ -96,26 +88,15 @@ const { main } = await import('../escrow-mark-shipped.js');
 // Fixtures
 // ---------------------------------------------------------------------------
 const ORDER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-const TRACKING = 'TRACK-XYZ-001';
 const TX_HASH = 'cafebabe00112233deadbeef445566778899aabbccddeeff00112233445566778899';
 const NEW_TX_HASH = 'deadbeef00112233cafebabe445566778899aabbccddeeff00112233445566778899';
-const NEW_DATUM_CBOR = 'd87980';
+const NEW_DATUM_CBOR = 'd87a80';
 const GRACE_PERIOD_SECONDS = 1209600; // 14 days
 
 const MARK_SHIPPED_RESULT = {
 	txHash: TX_HASH,
 	newUtxoRef: { txHash: NEW_TX_HASH, outputIndex: 0 },
 	newDatumCbor: NEW_DATUM_CBOR,
-};
-
-const SAMPLE_ORDER_EVENT: Database.OrderEvent = {
-	id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
-	order_id: ORDER_ID,
-	event_type: 'shipped',
-	tx_hash: TX_HASH,
-	payload: { v: 1, event: 'shipped' },
-	submitted_at: '2026-05-22T00:00:00Z',
-	confirmed_at: null,
 };
 
 // Future ship_deadline (pending, valid)
@@ -135,7 +116,7 @@ const STUB_ESCROW_PENDING: Database.Escrow = {
 	paid_at: new Date(Date.now() - 3600 * 1000).toISOString(),
 	ship_deadline: FUTURE_DEADLINE,
 	grace_period_end: null,
-	datum_cbor: 'd87980',
+	datum_cbor: 'd87a80',
 	shipped_tx_hash: null,
 	release_tx_hash: null,
 	refund_tx_hash: null,
@@ -162,7 +143,6 @@ beforeEach(() => {
 	mockGetNetworkConfig.mockReturnValue(STUB_NETWORK_PREVIEW);
 	mockGetGracePeriodSeconds.mockReturnValue(GRACE_PERIOD_SECONDS);
 	mockSubmitMarkShipped.mockResolvedValue(MARK_SHIPPED_RESULT);
-	mockInsertOrderEvent.mockResolvedValue(SAMPLE_ORDER_EVENT);
 	mockEqUpdate.mockResolvedValue({ error: null });
 
 	// Default: escrow is pending with future deadline
@@ -177,12 +157,8 @@ describe('arg parsing', () => {
 		await expect(main([])).rejects.toThrow('MISSING_ARG');
 	});
 
-	it('accepts --order-id without --tracking (tracking is optional)', async () => {
+	it('accepts --order-id', async () => {
 		await expect(main(['--order-id', ORDER_ID])).resolves.not.toThrow();
-	});
-
-	it('accepts --order-id with --tracking', async () => {
-		await expect(main(['--order-id', ORDER_ID, '--tracking', TRACKING])).resolves.not.toThrow();
 	});
 });
 
@@ -253,7 +229,7 @@ describe('submitMarkShipped', () => {
 });
 
 // ---------------------------------------------------------------------------
-// DB updates on success
+// DB updates on success — escrows table only
 // ---------------------------------------------------------------------------
 describe('DB updates on success', () => {
 	it('updates escrows with status=shipped, new utxo refs, shipped_tx_hash, grace_period_end, datum_cbor', async () => {
@@ -273,26 +249,12 @@ describe('DB updates on success', () => {
 		);
 	});
 
-	it('updates orders with status=shipped', async () => {
+	it('does NOT write orders.status nor order_events (owned by traceability)', async () => {
 		await main(['--order-id', ORDER_ID]);
 
-		expect(mockFrom).toHaveBeenCalledWith('orders');
-		expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: 'shipped' }));
-		expect(mockEqUpdate).toHaveBeenCalledWith('id', ORDER_ID);
-	});
-
-	it('inserts an order_events row with event_type="shipped" and the tx hash', async () => {
-		await main(['--order-id', ORDER_ID, '--tracking', TRACKING]);
-
-		expect(mockInsertOrderEvent).toHaveBeenCalledOnce();
-		expect(mockInsertOrderEvent).toHaveBeenCalledWith(
-			expect.objectContaining({
-				order_id: ORDER_ID,
-				event_type: 'shipped',
-				tx_hash: TX_HASH,
-				payload: expect.objectContaining({ event: 'shipped', tracking_number: 'TRACK-XYZ-001' }),
-			}),
-		);
+		// Only the escrows table is ever touched
+		expect(mockFrom).not.toHaveBeenCalledWith('orders');
+		expect(mockFrom).not.toHaveBeenCalledWith('order_events');
 	});
 
 	it('computes grace_period_end from getGracePeriodSeconds()', async () => {
@@ -331,22 +293,6 @@ describe('submitMarkShipped failure', () => {
 		// Only escrows SELECT should have been called, not UPDATE
 		const updateCalls = mockUpdate.mock.calls;
 		expect(updateCalls).toHaveLength(0);
-	});
-
-	it('does NOT update orders when submitMarkShipped throws', async () => {
-		mockSubmitMarkShipped.mockRejectedValueOnce(new Error('ChainUnavailable: connection refused'));
-
-		await expect(main(['--order-id', ORDER_ID])).rejects.toThrow();
-
-		expect(mockUpdate).not.toHaveBeenCalled();
-	});
-
-	it('does NOT call insertOrderEvent when submitMarkShipped throws', async () => {
-		mockSubmitMarkShipped.mockRejectedValueOnce(new Error('ChainUnavailable: connection refused'));
-
-		await expect(main(['--order-id', ORDER_ID])).rejects.toThrow();
-
-		expect(mockInsertOrderEvent).not.toHaveBeenCalled();
 	});
 
 	it('propagates the chain error', async () => {
