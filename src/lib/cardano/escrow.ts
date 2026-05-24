@@ -422,14 +422,25 @@ async function resolveSignAndSubmitWithBackendSigner(
 
 	const envelope = await buildTx(client);
 
-	console.log(envelope);
-
 	const witnesses = getMerchantSigner().sign(envelope.hash);
 
-	await client.submit({
-		tx: { content: envelope.tx, contentType: 'hex' },
-		witnesses,
-	} satisfies Parameters<typeof client.submit>[0]);
+	try {
+		await client.submit({
+			tx: { content: envelope.tx, contentType: 'hex' },
+			witnesses,
+		} satisfies Parameters<typeof client.submit>[0]);
+	} catch (err) {
+		// TRP errors (e.g. -32003 TxScriptFailure) carry the real detail —
+		// validator index, validationError and execution traces — in `.diagnostic`.
+		// The bare message ("tx script returned failure") hides it, so surface it.
+		const diagnostic = (err as { diagnostic?: unknown }).diagnostic;
+		const baseMsg = err instanceof Error ? err.message : String(err);
+		throw new Error(
+			diagnostic !== undefined
+				? `${baseMsg} — TRP diagnostic: ${JSON.stringify(diagnostic)} | resolved tx: ${envelope.tx} | tx hash: ${envelope.hash}`
+				: `${baseMsg} | resolved tx: ${envelope.tx} | tx hash: ${envelope.hash}`,
+		);
+	}
 
 	return envelope;
 }

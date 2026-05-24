@@ -176,6 +176,13 @@ tx release_escrow(
     escrow_utxo: UtxoRef,
     script_ref_utxo: UtxoRef,
 ) {
+    // The validator's check_release requires a Finite lower bound
+    // (valid_from >= grace_period_end). Without a validity block the on-chain
+    // lower bound is NegativeInfinity and the script returns False.
+    validity {
+        since_slot: tip_slot(),
+    }
+
     reference script_ref {
         ref: script_ref_utxo,
     }
@@ -212,6 +219,13 @@ tx refund_escrow(
     escrow_utxo: UtxoRef,
     script_ref_utxo: UtxoRef,
 ) {
+    // The validator's check_refund requires a Finite lower bound
+    // (valid_from >= ship_deadline). Without a validity block the on-chain
+    // lower bound is NegativeInfinity and the script returns False.
+    validity {
+        since_slot: tip_slot(),
+    }
+
     reference script_ref {
         ref: script_ref_utxo,
     }
