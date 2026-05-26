@@ -18,24 +18,31 @@ Reputation badges are **off-chain soulbound** — uniqueness is enforced at the 
 
 All transactions live on Cardano **preview** testnet. Explorer: <https://preview.cexplorer.io>.
 
-Before running any operator script against preview, set the following in `.env.preview` (do not commit this file):
+Before running any operator script against preview, copy `.env.preview` as `.env` and set the following in `.env` (do not commit this file):
 
 | Variable | Purpose |
 |---|---|
-| `TX3_TRP_ENDPOINT` | URL of the preview TRP server. |
-| `TX3_PROFILE` | `preview`. |
-| `MERCHANT_ADDRESS` | Bech32 address of the merchant's backend wallet. |
+| `TX3_TRP_ENDPOINT` | URL of the TRP server (dolos local or preview TRP). |
+| `TX3_TRP_API_KEY` | `dmtr-api-key` header value. Required for preview. |
+| `TX3_PROFILE` | `local` or `preview`. Must match a profile in `tx3/trix.toml`. |
+| `VITE_TX3_PROFILE` | Same value as `TX3_PROFILE`, exposed to the browser — drives the explorer link in the buyer UI. |
 | `CARDANO_MERCHANT_SKEY` | Ed25519 hex signing key for the merchant. Server-side only. |
-| `METADATA_LABEL` | Optional, default `1337`. |
-| `ESCROW_SHIP_DEADLINE_SECONDS` | Timeout for the merchant to ship. Demo uses `300` (5 min). |
-| `ESCROW_GRACE_PERIOD_SECONDS` | Grace period after shipped before release. Demo uses `300` (5 min). |
-| `SUPABASE_URL` | Supabase project URL. |
-| `SUPABASE_SERVICE_ROLE_KEY` | DB access for operator scripts. |
-| `VITE_TX3_PROFILE` | `preview` — drives the explorer link in the buyer UI. |
-| `VITE_TRP_ENDPOINT` | Same value as `TX3_TRP_ENDPOINT`, exposed to the Vite browser bundle. |
-| `VITE_MERCHANT_ADDRESS` | Same value as `MERCHANT_ADDRESS`, exposed to the browser. |
+| `MERCHANT_ADDRESS` | Bech32 address of the merchant's backend wallet. |
+| `ESCROW_SHIP_DEADLINE_SECONDS` | Timeout for the merchant to ship. `.env.example` uses `60`. |
+| `ESCROW_GRACE_PERIOD_SECONDS` | Grace period after shipped before release. `.env.example` uses `60`. |
+| `ESCROW_SCRIPT_REF_TX_HASH` | Tx hash of the escrow validator reference-script UTxO. Re-publish whenever `aiken build` produces a new validator hash. |
+| `ESCROW_SCRIPT_REF_OUTPUT_INDEX` | Output index of the escrow reference-script UTxO. |
+| `BADGE_SCRIPT_REF_TX_HASH` | Tx hash of the badge minting-policy reference-script UTxO (published once via `publish_badge_script`). |
+| `BADGE_SCRIPT_REF_OUTPUT_INDEX` | Output index of the badge reference-script UTxO. |
+| `VITE_SUPABASE_URL` | Supabase project URL (used by app + operator scripts). |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon key for client/browser access. |
+| `SUPABASE_SECRET_KEY` | Supabase service-role/secret key for operator scripts. Server-side only. |
+| `VITE_API_URL` | Base URL of the app's API, exposed to the browser. |
+| `METADATA_LABEL` | Optional, default `1337`. Numeric label for order-event metadata. |
 
-For local development against dolos, use `.env.local` with `TX3_PROFILE=local`.
+> The `order-cleanup` Supabase Edge Function additionally reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, but Supabase injects those automatically in the function runtime — they are not part of `.env`.
+
+For local development against dolos, use `TX3_PROFILE=local`.
 
 ## How to deploy
 
@@ -138,9 +145,7 @@ A complete order lifecycle from checkout through badge minting:
 
 All transactions live on Cardano **preview** testnet. Explorer: <https://preview.cexplorer.io>.
 
-## Feature A — On-chain Traceability
-
-Maps to grant outputs **A1 + A2**: on-chain transactions that record key order events.
+## On-chain Traceability
 
 The merchant backend signs three transactions per order lifecycle, each carrying CIP-25-style metadata under label `1337`:
 
@@ -148,7 +153,7 @@ The merchant backend signs three transactions per order lifecycle, each carrying
 { "v": 1, "event": "paid|shipped|completed|cancelled", "order_id": "<uuid>", "merchant": "<bech32>", "ts": <unix_seconds>, "data": { ... } }
 ```
 
-### Happy-path scenario — order `<ORDER_ID>` (pending)
+### Order `<ORDER_ID>` (pending)
 
 Run the demo:
 
@@ -160,9 +165,9 @@ Capture the resulting tx hashes:
 
 | Event | Tx hash | Explorer link |
 |---|---|---|
-| `paid` | `<TX_HASH_PAID>` | <https://preview.cexplorer.io/tx/TX_HASH_PAID> |
-| `shipped` | `<TX_HASH_SHIPPED>` | <https://preview.cexplorer.io/tx/TX_HASH_SHIPPED> |
-| `completed` | `<TX_HASH_COMPLETED>` | <https://preview.cexplorer.io/tx/TX_HASH_COMPLETED> |
+| `paid` | `f99e44c4c47ff2544a02fa56e2a4c539df30876498774159de5fc5230926f85c` | <https://preview.cexplorer.io/tx/f99e44c4c47ff2544a02fa56e2a4c539df30876498774159de5fc5230926f85c> |
+| `shipped` | `91ee5c4f2ada10001e1cea61e0a68c30a98e79df81542831b3969728074926b0` | <https://preview.cexplorer.io/tx/91ee5c4f2ada10001e1cea61e0a68c30a98e79df81542831b3969728074926b0> |
+| `completed` | `0d8516bc8ada400658a98c51e1c60e5ed2623cd1ce267fb1df2fdd1543b25fdf` | <https://preview.cexplorer.io/tx/0d8516bc8ada400658a98c51e1c60e5ed2623cd1ce267fb1df2fdd1543b25fdf> |
 
 Each metadata payload should be visible under label `1337` in CardanoScan's metadata panel.
 
@@ -171,34 +176,22 @@ Each metadata payload should be visible under label `1337` in CardanoScan's meta
 - For the milestone walkthrough, additional events (`cancelled`) can be demonstrated with a second order using `pnpm cancel-order -- --order-id <ORDER_ID> --reason "<REASON>"`.
 - If any tx confirms slowly and the corresponding `order_events.confirmed_at` stays `NULL`, run `pnpm reconcile-events` to fill it in.
 
-## Feature B — On-chain Escrow Contract
-
-Maps to grant outputs **B1 + B2**: at least 2 release scenarios (happy release + refund timeout).
+## On-chain Escrow Contract
 
 The escrow contract is a Plutus V3 validator with three redeemers: `MarkShipped` (merchant confirms shipment), `Release` (merchant collects funds after grace period), and `Refund` (buyer refunds if merchant misses the ship deadline). Each escrow lives as a single UTxO at the script address with an `EscrowDatum` carrying order details and deadlines.
 
-### Happy-path release (pending)
+### Release
 
 Lock → mark shipped → wait grace period → release:
 
 | Step | Tx hash | Explorer link |
 |---|---|---|
-| Lock to script | `<TX_HASH_LOCK>` | <https://preview.cexplorer.io/tx/TX_HASH_LOCK> |
-| Mark shipped | `<TX_HASH_ESCROW_SHIPPED>` | <https://preview.cexplorer.io/tx/TX_HASH_ESCROW_SHIPPED> |
-| Release | `<TX_HASH_RELEASE>` | <https://preview.cexplorer.io/tx/TX_HASH_RELEASE> |
+| Lock to script | `f99e44c4c47ff2544a02fa56e2a4c539df30876498774159de5fc5230926f85c` | <https://preview.cexplorer.io/tx/f99e44c4c47ff2544a02fa56e2a4c539df30876498774159de5fc5230926f85c> |
+| Mark shipped | `fa6f06b2a2e473fabf070e926310c1199c6b78d3ed9f660419d798b5c0c0f266` | <https://preview.cexplorer.io/tx/fa6f06b2a2e473fabf070e926310c1199c6b78d3ed9f660419d798b5c0c0f266> |
+| Release | `c75e1c458f5bbe613d308e38d15cc9275b691c510f74b33d4ece626baef774f4` | <https://preview.cexplorer.io/tx/c75e1c458f5bbe613d308e38d15cc9275b691c510f74b33d4ece626baef774f4> |
 
-### Refund on timeout (pending)
 
-Lock → wait ship deadline → refund:
-
-| Step | Tx hash | Explorer link |
-|---|---|---|
-| Lock to script | `<TX_HASH_LOCK_REFUND>` | <https://preview.cexplorer.io/tx/TX_HASH_LOCK_REFUND> |
-| Refund | `<TX_HASH_REFUND>` | <https://preview.cexplorer.io/tx/TX_HASH_REFUND> |
-
-## Feature C — Reputation Badges
-
-Maps to grant outputs **C1 + C2**: at least 2 minted badge tokens (`BUYER_FIRST_PURCHASE` and `SELLER_FIRST_DELIVERY`).
+## Reputation Badges
 
 Two badge kinds are defined:
 
@@ -231,8 +224,8 @@ Eligibility is enforced off-chain by the script: the buyer must have exactly one
 
 | Badge | Tx hash | Explorer link |
 |---|---|---|
-| Buyer First Purchase | `<TX_HASH_BUYER_BADGE>` | <https://preview.cexplorer.io/tx/TX_HASH_BUYER_BADGE> |
-| Seller First Delivery | `<TX_HASH_SELLER_BADGE>` | <https://preview.cexplorer.io/tx/TX_HASH_SELLER_BADGE> |
+| Buyer First Purchase | `cd20867329ed6457dbc61f464e7a18832e8902d5a7497a76dc440cb6ab40b745` | <https://preview.cexplorer.io/tx/cd20867329ed6457dbc61f464e7a18832e8902d5a7497a76dc440cb6ab40b745> |
+| Seller First Delivery | `83886f27e8b57a7a4a1af914bb0ed329146b571b88c1ced807cb32add9e3ff03` | <https://preview.cexplorer.io/tx/83886f27e8b57a7a4a1af914bb0ed329146b571b88c1ced807cb32add9e3ff03> |
 
 ## Operator scripts
 
@@ -259,7 +252,6 @@ The following are explicitly out of scope for this milestone and tracked as futu
 - **No Burn redeemer** — the minting policy has a single `Mint` redeemer; badges cannot be burned.
 - **No reputation aggregator UI / leaderboard** — no page ranking buyers or sellers by badge count.
 - **No reconcile-badges script** — no script to scan the chain for badge UTxOs and reconcile with the `issued_badges` table.
-- **No paid IPFS pinning service** — badge images are served from `public/badges/` locally; IPFS hosting is planned but not in scope.
 - **CLI-driven minting only** — all merchant actions (traceability, escrow, badge minting) are driven by CLI scripts, not an admin UI.
 - **No scheduled reconciliation** — `reconcile-events` and `reconcile-escrow` are manual CLI commands, not cron jobs.
 
