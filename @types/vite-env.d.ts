@@ -5,6 +5,9 @@ declare interface ImportMetaEnv {
 
 	// API URL
 	readonly VITE_API_URL?: string;
+
+	// Cardano / tx3
+	readonly VITE_TX3_PROFILE?: string;
 	// more env variables...
 }
 

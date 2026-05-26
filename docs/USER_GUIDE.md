@@ -43,6 +43,10 @@ Server-side variables (do not expose):
 
 Supabase clients read these values from [src/lib/supabase.ts](src/lib/supabase.ts) and server functions (orders) use the secret key via [src/server-fns/orders.ts](src/server-fns/orders.ts).
 
+## Advanced on-chain features
+
+For on-chain advanced features (traceability, escrow, reputation), see [docs/advanced-onchain.md](advanced-onchain.md).
+
 ## Supabase setup
 
 1. Create a Supabase project.

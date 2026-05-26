@@ -1,0 +1,589 @@
+/**
+ * Escrow orchestrator — lock + state-transition paths.
+ *
+ * Builds and submits buyer/merchant escrow transactions:
+ *   - submitLockEscrow:     buyer locks ADA/tokens into the contract (CIP-30)
+ *   - submitMarkShipped:    merchant marks order as shipped (backend signer)
+ *   - submitReleaseEscrow:  merchant releases funds after grace period (backend signer)
+ *   - submitRefundEscrow:   buyer claims refund (CIP-30)
+ *
+ * Relies on:
+ *   - getNetworkConfig()        — trpEndpoint, profile, merchantAddress
+ *   - getShipDeadlineSeconds()  — ship deadline timeout in seconds
+ *   - getGracePeriodSeconds()   — grace period timeout in seconds
+ *   - getMerchantSigner()       — backend Ed25519 signer (markShipped, releaseEscrow)
+ *   - CIP-30 buyer signer       — signs via wallet.signTx() (lockEscrow, refundEscrow)
+ *   - Client (codegen facade)   — protocol method dispatch + submit
+ *   - getEscrowByOrderId()      — reads escrow row for state-transition functions
+ *
+ * Note: script address routing is handled internally by tx3 via the embedded
+ * script hash in the compiled protocol definition — no getScriptAddress() call
+ * is needed here.
+ */
+
+import { bech32 } from 'bech32';
+import { Buffer } from 'buffer';
+import { Tag as CborTag, encode as cborEncode } from 'cbor-x';
+
+import { decodeWitnessSet } from 'tx3-sdk/signer';
+import type { TxEnvelope, TxWitness } from 'tx3-sdk/trp';
+import type { ProfileName } from '@/lib/tx3/protocol';
+import { Client } from '@/lib/tx3/protocol';
+
+import { getEscrowByOrderId } from '@/server-fns/escrows.js';
+
+import { getGracePeriodSeconds, getScriptRefUtxo, getShipDeadlineSeconds } from './escrow-policy.js';
+import { getNetworkConfig } from './network.js';
+import { getMerchantSigner } from './signer.js';
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal signer interface for buyer-driven escrow state transitions.
+ *
+ * Accepts the pre-computed tx body hash (hex) so implementations can sign
+ * the hash directly — without needing to CBOR-decode/re-encode the full tx.
+ * This avoids the CBOR round-trip bug where decode+re-encode may not produce
+ * byte-identical bytes, which would cause an invalid signature on-chain.
+ *
+ * The chain verifies signatures against the original tx body bytes hash,
+ * not a re-encoded version, so callers must sign `envelope.hash` directly.
+ */
+export interface BuyerSigner {
+	/**
+	 * Signs the tx body hash and returns a vkey witness.
+	 * @param txBodyHash - hex-encoded 32-byte tx body hash (blake2b-256)
+	 */
+	signTxBodyHash(txBodyHash: string): Promise<{ vkey: string; signature: string }>;
+}
+
+/** ADA-only value: just lovelace. */
+export interface AdaValue {
+	lovelace: bigint;
+}
+
+/**
+ * Token value: a native asset. The min-UTxO ADA component is computed by tx3
+ * from the resolved output contents (`min_utxo(escrow_output)` in main.tx3),
+ * so callers no longer pass it explicitly.
+ */
+export interface TokenValue {
+	policyId: string;
+	assetName: string;
+	quantity: bigint;
+}
+
+/** Discriminated union of supported escrow value shapes. */
+export type EscrowValue = AdaValue | TokenValue;
+
+/** Return value from a successful lock transaction. */
+export interface LockResult {
+	lockTxHash: string;
+	lockOutputIndex: number;
+	datumCbor: string;
+	/** Unix timestamp (ms) when the escrow was locked — matches the on-chain datum field. */
+	paidAt: number;
+	/** Unix timestamp (ms) of the ship deadline — matches the on-chain datum field. */
+	shipDeadline: number;
+	/** Hex-encoded 28-byte buyer payment key hash. */
+	buyerPkh: string;
+	/** Hex-encoded 28-byte merchant payment key hash. */
+	merchantPkh: string;
+}
+
+/**
+ * Output of `prepareLockEscrowTx`: a resolved (but unsigned) lock tx plus all
+ * the metadata the buyer needs to send back when submitting the signed tx.
+ */
+export interface PreparedLockEscrow {
+	envelope: TxEnvelope;
+	datumCbor: string;
+	paidAt: number;
+	shipDeadline: number;
+	buyerPkh: string;
+	merchantPkh: string;
+	lockOutputIndex: number;
+}
+
+/** Return value from submitMarkShipped. */
+export interface MarkShippedResult {
+	txHash: string;
+	newUtxoRef: { txHash: string; outputIndex: number };
+	newDatumCbor: string;
+}
+
+// ---------------------------------------------------------------------------
+// Type guard
+// ---------------------------------------------------------------------------
+
+function isTokenValue(v: EscrowValue): v is TokenValue {
+	return 'policyId' in v;
+}
+
+// ---------------------------------------------------------------------------
+// UtxoRef wire encoding
+// ---------------------------------------------------------------------------
+
+/**
+ * Encodes a UTxO reference into the tx3 TRP wire format: `"<txidHex>#<index>"`.
+ *
+ * The codegen `Client` forwards resolve args to TRP verbatim — it does NOT run
+ * them through the SDK's `toJson`, which is what normally serializes a UtxoRef
+ * ArgValue to this string form (see `utxoRefToWire` in tx3-sdk). Passing the
+ * object form `{ txid, index }` makes the server reject the arg with
+ * `(-32005) value is not a utxo ref`. Callers must send the string form.
+ */
+function toUtxoRefWire(txid: string, index: number): string {
+	return `${txid}#${index}`;
+}
+
+// ---------------------------------------------------------------------------
+// Address utilities
+// ---------------------------------------------------------------------------
+
+/**
+ * Extracts the 28-byte payment key hash (PKH) from a hex-encoded Cardano
+ * address as returned by CIP-30 `getChangeAddress()`.
+ *
+ * Cardano address byte layout (Shelley):
+ *   [header(1)] [pkh(28)] [optional staking credential(28)]
+ *
+ * The PKH is bytes [1..29) of the raw address bytes.
+ */
+function extractPkhFromHexAddress(addressHex: string): Buffer {
+	const raw = Buffer.from(addressHex, 'hex');
+	if (raw.length < 29) {
+		throw new Error(`INVALID_ADDRESS: address too short to contain a PKH (${raw.length} bytes)`);
+	}
+	return raw.slice(1, 29);
+}
+
+/**
+ * Extracts the 28-byte PKH from a bech32-encoded Cardano address
+ * (addr1... or addr_test1...).
+ */
+function extractPkhFromBech32Address(address: string): Buffer {
+	let decoded: { prefix: string; words: number[] };
+	try {
+		decoded = bech32.decode(address, 1000);
+	} catch {
+		throw new Error(`INVALID_ADDRESS: bech32 decode failed for "${address}"`);
+	}
+	const raw = Buffer.from(bech32.fromWords(decoded.words));
+	if (raw.length < 29) {
+		throw new Error(`INVALID_ADDRESS: address too short to contain a PKH (${raw.length} bytes)`);
+	}
+	return raw.slice(1, 29);
+}
+
+/**
+ * Converts a hex-encoded Cardano address (as returned by CIP-30
+ * `getChangeAddress()`) into its bech32 string form. The network tag is read
+ * from the low nibble of the address header byte (0 = testnet, 1 = mainnet).
+ */
+function hexAddressToBech32(addressHex: string): string {
+	const raw = Buffer.from(addressHex, 'hex');
+	if (raw.length < 29) {
+		throw new Error(`INVALID_ADDRESS: address too short (${raw.length} bytes)`);
+	}
+	const networkTag = raw[0] & 0x0f;
+	const prefix = networkTag === 1 ? 'addr' : 'addr_test';
+	return bech32.encode(prefix, bech32.toWords(raw), 1000);
+}
+
+// ---------------------------------------------------------------------------
+// Datum CBOR construction
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the CBOR-encoded EscrowDatum as a hex string.
+ *
+ * Plutus constr(0, [buyerPkh, merchantPkh, orderId, paidAt, shipDeadline, None])
+ * is encoded as CBOR tag 121 wrapping a 6-element array.
+ *
+ * `grace_period_end` is always `None` on lock. Aiken's prelude `Option` orders
+ * `Some` first, so None = Plutus CONSTR 1 = CBOR tag 122, [].
+ */
+function buildDatumCbor(
+	buyerPkh: Buffer,
+	merchantPkh: Buffer,
+	orderId: string,
+	paidAt: number,
+	shipDeadline: number,
+): string {
+	const noneConstr = new CborTag([], 122);
+	const datum = new CborTag(
+		[buyerPkh, merchantPkh, Buffer.from(orderId, 'utf8'), paidAt, shipDeadline, noneConstr],
+		121,
+	);
+	return cborEncode(datum).toString('hex');
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves a lock-escrow transaction via TRP without signing it.
+ *
+ * Steps:
+ * 1. Read network config and escrow policy config.
+ * 2. Derive buyer PKH from the provided change address.
+ * 3. Derive merchant PKH from the merchant address in network config.
+ * 4. Compute `paid_at` (now ms) and `ship_deadline`.
+ * 5. Build the datum CBOR.
+ * 6. Resolve the lock tx via the codegen Client.
+ *
+ * The returned `envelope.tx` must be signed by the buyer (CIP-30) and then
+ * passed to `submitLockEscrowTx` for chain submission.
+ *
+ * The lock output is always at index 0 in the tx3-generated transaction
+ * (the first output is always the script output per the TIR spec).
+ */
+export async function prepareLockEscrowTx(
+	orderId: string,
+	value: EscrowValue,
+	buyerAddressHex: string,
+): Promise<PreparedLockEscrow> {
+	const { trpEndpoint, trpApiKey, profile, merchantAddress } = getNetworkConfig();
+	const shipDeadlineSeconds = getShipDeadlineSeconds();
+
+	const paidAt = Date.now();
+	const shipDeadline = paidAt + shipDeadlineSeconds * 1000;
+
+	const buyerPkh = extractPkhFromHexAddress(buyerAddressHex);
+	const merchantPkh = extractPkhFromBech32Address(merchantAddress);
+	const buyerAddressBech32 = hexAddressToBech32(buyerAddressHex);
+
+	const datumCbor = buildDatumCbor(buyerPkh, merchantPkh, orderId, paidAt, shipDeadline);
+
+	const clientOptions = trpApiKey
+		? { endpoint: trpEndpoint, headers: { 'dmtr-api-key': trpApiKey } }
+		: { endpoint: trpEndpoint };
+	const client = new Client(clientOptions, profile as ProfileName, {
+		buyer: buyerAddressBech32,
+		merchant: merchantAddress,
+	});
+
+	// tx3 TRP wire format for Bytes args is a hex string (tx3-sdk toJson emits
+	// `0x<hex>` and the server's parser also accepts plain hex). Buffers must NOT
+	// be sent directly — JSON.stringify turns them into `{type:"Buffer",data:[]}`
+	// which the server rejects as `invalid bytes envelope: missing field content`.
+	const buyerPkhHex = buyerPkh.toString('hex');
+	const merchantPkhHex = merchantPkh.toString('hex');
+	const orderIdHex = Buffer.from(orderId, 'utf8').toString('hex');
+
+	let envelope: TxEnvelope;
+	if (isTokenValue(value)) {
+		// Safe for NFT quantities; large fungible token supplies may lose precision.
+		// NOTE: tx3 TRP resolver expects the original snake_case parameter names
+		// from main.tx3, NOT the codegen camelCase TS types. Casting is required.
+		envelope = await client.lockEscrowTokens({
+			buyer_pkh: buyerPkhHex,
+			merchant_pkh: merchantPkhHex,
+			order_id: orderIdHex,
+			paid_at: paidAt,
+			ship_deadline: shipDeadline,
+			token_policy: value.policyId,
+			asset_name: value.assetName,
+			token_quantity: Number(value.quantity),
+		} as unknown as Parameters<typeof client.lockEscrowTokens>[0]);
+	} else {
+		// Safe for ADA (max 45B ADA = 4.5e16 lovelace < 2^53).
+		envelope = await client.lockEscrowAda({
+			buyer_pkh: buyerPkhHex,
+			merchant_pkh: merchantPkhHex,
+			order_id: orderIdHex,
+			paid_at: paidAt,
+			ship_deadline: shipDeadline,
+			quantity: Number(value.lovelace),
+		} as unknown as Parameters<typeof client.lockEscrowAda>[0]);
+	}
+
+	return {
+		envelope,
+		datumCbor,
+		paidAt,
+		shipDeadline,
+		buyerPkh: buyerPkh.toString('hex'),
+		merchantPkh: merchantPkh.toString('hex'),
+		lockOutputIndex: 0,
+	};
+}
+
+/**
+ * Submits a previously-resolved lock-escrow transaction to the chain.
+ *
+ * Decodes the CIP-30 witness set (hex CBOR) into `TxWitness[]` shape and
+ * sends it together with the original tx body via TRP. Returns the tx hash
+ * (matches `envelope.hash` from `prepareLockEscrowTx`).
+ */
+export async function submitLockEscrowTx(envelope: TxEnvelope, witnessSetCborHex: string): Promise<{ txHash: string }> {
+	const { trpEndpoint, trpApiKey, profile } = getNetworkConfig();
+
+	const clientOptions = trpApiKey
+		? { endpoint: trpEndpoint, headers: { 'dmtr-api-key': trpApiKey } }
+		: { endpoint: trpEndpoint };
+	const client = new Client(clientOptions, profile as ProfileName);
+
+	const witnesses = decodeWitnessSet(witnessSetCborHex);
+
+	await client.submit({
+		tx: { content: envelope.tx, contentType: 'hex' },
+		witnesses,
+	} satisfies Parameters<typeof client.submit>[0]);
+
+	return { txHash: envelope.hash };
+}
+
+/**
+ * Builds and submits the buyer's escrow lock transaction end-to-end using a
+ * CIP-30 wallet. Thin wrapper over `prepareLockEscrowTx` + `wallet.signTx` +
+ * `submitLockEscrowTx` — kept for server-side / script callers that already
+ * have a wallet-like signer in scope. The browser flow does *not* use this
+ * (it crosses the network between resolve and submit via server fns); see
+ * `prepareLockEscrowServerFn` / `submitLockEscrowServerFn`.
+ */
+export async function submitLockEscrow(
+	orderId: string,
+	value: EscrowValue,
+	buyerSigner: CardanoWalletAPI,
+): Promise<LockResult> {
+	const buyerAddressHex = await buyerSigner.getChangeAddress();
+	const prepared = await prepareLockEscrowTx(orderId, value, buyerAddressHex);
+	const witnessSetCborHex = await buyerSigner.signTx(prepared.envelope.tx, true);
+	const { txHash } = await submitLockEscrowTx(prepared.envelope, witnessSetCborHex);
+
+	return {
+		lockTxHash: txHash,
+		lockOutputIndex: prepared.lockOutputIndex,
+		datumCbor: prepared.datumCbor,
+		paidAt: prepared.paidAt,
+		shipDeadline: prepared.shipDeadline,
+		buyerPkh: prepared.buyerPkh,
+		merchantPkh: prepared.merchantPkh,
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Datum CBOR construction — shipped datum (with grace_period_end = Some(ms))
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the CBOR-encoded EscrowDatum for the shipped state.
+ *
+ * Same structure as the lock datum but `grace_period_end` is
+ * `Some(gracePeriodEndMs)`. Aiken's prelude `Option` orders `Some` first, so
+ * Some = Plutus CONSTR 0 = CBOR tag 121 wrapping the value.
+ */
+function buildShippedDatumCbor(
+	buyerPkh: Buffer,
+	merchantPkh: Buffer,
+	orderId: Buffer,
+	paidAt: number,
+	shipDeadline: number,
+	gracePeriodEndMs: number,
+): string {
+	// Some(value) = CBOR tag 121 (Plutus CONSTR 0) wrapping [value]
+	const someConstr = new CborTag([gracePeriodEndMs], 121);
+	const datum = new CborTag([buyerPkh, merchantPkh, orderId, paidAt, shipDeadline, someConstr], 121);
+	return cborEncode(datum).toString('hex');
+}
+
+// ---------------------------------------------------------------------------
+// Shared private pipeline helper for backend-signer state transitions
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared pipeline for merchant-driven escrow state transitions.
+ *
+ * 1. Construct the protocol Client.
+ * 2. Resolve the tx via the provided factory function.
+ * 3. Sign the resolved tx hash with the backend merchant signer.
+ * 4. Submit the signed tx.
+ * 5. Return the tx envelope.
+ */
+async function resolveSignAndSubmitWithBackendSigner(
+	buildTx: (client: Client) => Promise<TxEnvelope>,
+): Promise<TxEnvelope> {
+	const { trpEndpoint, trpApiKey, profile, merchantAddress } = getNetworkConfig();
+
+	const clientOptions = trpApiKey
+		? { endpoint: trpEndpoint, headers: { 'dmtr-api-key': trpApiKey } }
+		: { endpoint: trpEndpoint };
+	const client = new Client(clientOptions, profile as ProfileName, {
+		merchant: merchantAddress,
+	});
+
+	const envelope = await buildTx(client);
+
+	const witnesses = getMerchantSigner().sign(envelope.hash);
+
+	try {
+		await client.submit({
+			tx: { content: envelope.tx, contentType: 'hex' },
+			witnesses,
+		} satisfies Parameters<typeof client.submit>[0]);
+	} catch (err) {
+		// TRP errors (e.g. -32003 TxScriptFailure) carry the real detail —
+		// validator index, validationError and execution traces — in `.diagnostic`.
+		// The bare message ("tx script returned failure") hides it, so surface it.
+		const diagnostic = (err as { diagnostic?: unknown }).diagnostic;
+		const baseMsg = err instanceof Error ? err.message : String(err);
+		throw new Error(
+			diagnostic !== undefined
+				? `${baseMsg} — TRP diagnostic: ${JSON.stringify(diagnostic)} | resolved tx: ${envelope.tx} | tx hash: ${envelope.hash}`
+				: `${baseMsg} | resolved tx: ${envelope.tx} | tx hash: ${envelope.hash}`,
+		);
+	}
+
+	return envelope;
+}
+
+// ---------------------------------------------------------------------------
+// Public API — state transitions
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds and submits the `mark_shipped` transaction.
+ *
+ * 1. Read current escrow row.
+ * 2. Compute shipped_at and grace_period_end timestamps.
+ * 3. Build markShipped tx with escrowUtxo, shippedAt, gracePeriodEnd.
+ * 4. Sign with backend merchant signer.
+ * 5. Submit.
+ * 6. Rebuild new datum CBOR (with grace_period_end = Some(ms)).
+ * 7. Return { txHash, newUtxoRef, newDatumCbor }.
+ */
+export async function submitMarkShipped(orderId: string): Promise<MarkShippedResult> {
+	const escrow = await getEscrowByOrderId(orderId);
+	if (!escrow) {
+		throw new Error(`ESCROW_NOT_FOUND: order_id=${orderId}`);
+	}
+
+	const shippedAt = Date.now();
+	const gracePeriodEnd = shippedAt + getGracePeriodSeconds() * 1000;
+
+	const escrowUtxo = toUtxoRefWire(escrow.utxo_tx_hash, escrow.utxo_output_index);
+	const scriptRefUtxoRaw = getScriptRefUtxo();
+	const scriptRefUtxo = toUtxoRefWire(scriptRefUtxoRaw.txHash, scriptRefUtxoRaw.outputIndex);
+
+	const envelope = await resolveSignAndSubmitWithBackendSigner(client =>
+		client.markShipped({
+			escrow_utxo: escrowUtxo,
+			script_ref_utxo: scriptRefUtxo,
+			shipped_at: shippedAt,
+			grace_period_end: gracePeriodEnd,
+		} as unknown as Parameters<typeof client.markShipped>[0]),
+	);
+
+	// Rebuild the new datum CBOR from the escrow row fields + new gracePeriodEnd
+	const buyerPkh = Buffer.from(escrow.buyer_pkh, 'hex');
+	const merchantPkh = Buffer.from(escrow.merchant_pkh, 'hex');
+	const orderIdBytes = Buffer.from(escrow.order_id, 'utf8');
+	const paidAt = Number(escrow.paid_at);
+	const shipDeadline = Number(escrow.ship_deadline);
+
+	const newDatumCbor = buildShippedDatumCbor(buyerPkh, merchantPkh, orderIdBytes, paidAt, shipDeadline, gracePeriodEnd);
+
+	// The new script output is always at index 0 per the tx3 TIR spec
+	return {
+		txHash: envelope.hash,
+		newUtxoRef: { txHash: envelope.hash, outputIndex: 0 },
+		newDatumCbor,
+	};
+}
+
+/**
+ * Builds and submits the `release_escrow` transaction.
+ *
+ * 1. Read current escrow row.
+ * 2. Build releaseEscrow tx with escrowUtxo.
+ * 3. Sign with backend merchant signer.
+ * 4. Submit.
+ * 5. Return { txHash }.
+ */
+export async function submitReleaseEscrow(orderId: string): Promise<{ txHash: string }> {
+	const escrow = await getEscrowByOrderId(orderId);
+	if (!escrow) {
+		throw new Error(`ESCROW_NOT_FOUND: order_id=${orderId}`);
+	}
+
+	const escrowUtxo = toUtxoRefWire(escrow.utxo_tx_hash, escrow.utxo_output_index);
+	const scriptRefUtxoRaw = getScriptRefUtxo();
+	const scriptRefUtxo = toUtxoRefWire(scriptRefUtxoRaw.txHash, scriptRefUtxoRaw.outputIndex);
+
+	const envelope = await resolveSignAndSubmitWithBackendSigner(client =>
+		client.releaseEscrow({
+			escrow_utxo: escrowUtxo,
+			script_ref_utxo: scriptRefUtxo,
+		} as unknown as Parameters<typeof client.releaseEscrow>[0]),
+	);
+
+	return { txHash: envelope.hash };
+}
+
+/**
+ * Builds and submits the `refund_escrow` transaction.
+ *
+ * 1. Read current escrow row.
+ * 2. Build refundEscrow tx with escrowUtxo (Buyer party = buyerAddress).
+ * 3. Sign the tx body hash with the buyer signer (hash-based, no CBOR round-trip).
+ * 4. Submit.
+ * 5. Return { txHash }.
+ *
+ * Uses `BuyerSigner.signTxBodyHash(envelope.hash)` so the buyer signs the
+ * pre-computed tx body hash directly — avoiding CBOR decode+re-encode which
+ * may not produce byte-identical bytes and would result in an invalid signature.
+ */
+export async function submitRefundEscrow(
+	orderId: string,
+	buyerSigner: BuyerSigner,
+	buyerAddress: string,
+): Promise<{ txHash: string }> {
+	const escrow = await getEscrowByOrderId(orderId);
+	if (!escrow) {
+		throw new Error(`ESCROW_NOT_FOUND: order_id=${orderId}`);
+	}
+
+	const { trpEndpoint, trpApiKey, profile, merchantAddress } = getNetworkConfig();
+	const clientOptions = trpApiKey
+		? { endpoint: trpEndpoint, headers: { 'dmtr-api-key': trpApiKey } }
+		: { endpoint: trpEndpoint };
+	const client = new Client(clientOptions, profile as ProfileName, {
+		buyer: buyerAddress,
+		merchant: merchantAddress,
+	});
+
+	const escrowUtxo = toUtxoRefWire(escrow.utxo_tx_hash, escrow.utxo_output_index);
+	const scriptRefUtxoRaw = getScriptRefUtxo();
+	const scriptRefUtxo = toUtxoRefWire(scriptRefUtxoRaw.txHash, scriptRefUtxoRaw.outputIndex);
+
+	const envelope = await client.refundEscrow({
+		escrow_utxo: escrowUtxo,
+		script_ref_utxo: scriptRefUtxo,
+	} as unknown as Parameters<typeof client.refundEscrow>[0]);
+
+	// Sign the pre-computed tx body hash directly — no CBOR decode/re-encode.
+	// The chain verifies against the original tx body bytes hash (envelope.hash),
+	// so we must sign that exact value.
+	const { vkey, signature } = await buyerSigner.signTxBodyHash(envelope.hash);
+
+	// Build the TxWitness array from the hex-encoded vkey and signature
+	const witnesses: TxWitness[] = [
+		{
+			type: 'vkey',
+			key: { content: vkey, contentType: 'hex' },
+			signature: { content: signature, contentType: 'hex' },
+		},
+	];
+
+	await client.submit({
+		tx: { content: envelope.tx, contentType: 'hex' },
+		witnesses,
+	} satisfies Parameters<typeof client.submit>[0]);
+
+	return { txHash: envelope.hash };
+}

@@ -4,6 +4,8 @@ import { z } from 'zod';
 
 // Lib
 import { getTokenMetadataById, isTokenSupported } from '@/lib';
+import { submitPaidTrace } from '@/lib/cardano/traceability';
+import { insertOrderEvent } from '@/server-fns/order-events';
 
 interface BulkReservationResult {
 	success: boolean;
@@ -144,12 +146,45 @@ async function validateAndCalculateOrderTotals(items: Database.OrderItemInput[])
 	};
 }
 
-async function updateOrderStatusWithServiceRole(
+/**
+ * Update an order's status (and optionally cardano_tx_hash / payment_error).
+ *
+ * For `status = 'paid'` the function performs the following steps **in order**
+ * to achieve best-effort atomicity without a native SQL transaction:
+ *
+ *   1. Submit the on-chain `paid` traceability event via `submitPaidTrace`.
+ *      If this throws (chain unavailable, tx rejected, etc.) we bail out
+ *      immediately — the DB write is never performed and the order stays in
+ *      its current state.
+ *   2. Persist `orders.status = 'paid'` and `cardano_tx_hash` to the DB.
+ *   3. Insert the corresponding `order_events` row (event_type='paid').
+ *
+ * Network latency note: `submitPaidTrace` makes a network call to the TRP
+ * endpoint (dolos / preview). In local dev with a mocked u5c client it is
+ * near-instant. Against Cardano Preview expect ~1–2 s for resolve + submit.
+ *
+ * Exported for unit-testing in __tests__/orders-paid-trace.test.ts.
+ */
+export async function updateOrderStatusWithServiceRole(
 	orderId: string,
 	status: Database.OrderStatus,
 	txHash?: string,
 	error?: string,
 ) {
+	// -----------------------------------------------------------------------
+	// Step 1 (paid only): submit on-chain trace BEFORE touching the DB.
+	// A chain failure here prevents the status transition — the order stays
+	// in its current state (no DB write, no event row).
+	// -----------------------------------------------------------------------
+	let traceResult: Awaited<ReturnType<typeof submitPaidTrace>> | null = null;
+	if (status === 'paid') {
+		// Throws on chain error → caller gets the error, DB is not touched.
+		traceResult = await submitPaidTrace(orderId);
+	}
+
+	// -----------------------------------------------------------------------
+	// Step 2: persist status + optional fields to orders table.
+	// -----------------------------------------------------------------------
 	const supabase = getServerSupabase();
 	const updateData: Partial<Database.Order> = { status };
 
@@ -165,6 +200,22 @@ async function updateOrderStatusWithServiceRole(
 
 	if (updateError) {
 		throw new Error(`Failed to update order: ${updateError.message}`);
+	}
+
+	// -----------------------------------------------------------------------
+	// Step 3 (paid only): insert the order_events row.
+	// If this fails, the order IS already marked paid but the event row is
+	// missing — the reconciler (A12) can re-discover from the chain.
+	// We still throw so the caller surfaces the error rather than silently
+	// swallowing it.
+	// -----------------------------------------------------------------------
+	if (status === 'paid' && traceResult) {
+		await insertOrderEvent({
+			order_id: orderId,
+			event_type: 'paid',
+			tx_hash: traceResult.txHash,
+			payload: { event: 'paid', tx_hash: traceResult.txHash },
+		});
 	}
 
 	// Stock reservations are handled automatically by database triggers

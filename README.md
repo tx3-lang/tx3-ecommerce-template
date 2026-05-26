@@ -17,6 +17,11 @@ To build this application for production:
 pnpm build
 ```
 
+## Advanced on-chain features
+
+This project includes advanced Cardano on-chain features (traceability, escrow, reputation).  
+See [docs/advanced-onchain.md](docs/advanced-onchain.md) for details.
+
 ## Testing
 
 This project uses [Vitest](https://vitest.dev/) for testing. You can run the tests with:

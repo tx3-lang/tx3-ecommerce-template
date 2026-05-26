@@ -1,0 +1,25 @@
+name = "txpipe/e-commerce-validators"
+version = "0.1.0"
+compiler = "v1.1.21"
+plutus = "v3"
+license = "Apache-2.0"
+description = "Plutus V3 escrow validators for the e-commerce project"
+
+[repository]
+user = "txpipe"
+project = "e-commerce-validators"
+platform = "github"
+
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "v2.2.0"
+source = "github"
+
+[config.default]
+grace_period_ms = 1209600000
+
+[config.local]
+grace_period_ms = 30000
+
+[config.preview]
+grace_period_ms = 1209600000

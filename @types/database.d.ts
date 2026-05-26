@@ -26,6 +26,46 @@ declare namespace Database {
 		created_at: string;
 	}
 
+	type OrderEventType = 'paid' | 'shipped' | 'completed' | 'cancelled';
+
+	// JSON value type — concrete enough for TanStack Start's server-fn return
+	// inference to serialise cleanly. `Record<string, unknown>` here breaks
+	// `createServerFn` typing in src/server-fns/orders.ts.
+	type JsonPrimitive = string | number | boolean | null;
+	type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
+	interface OrderEvent {
+		id: string;
+		order_id: string;
+		event_type: OrderEventType;
+		tx_hash: string;
+		payload: { [key: string]: JsonValue };
+		submitted_at: string;
+		confirmed_at: string | null;
+	}
+
+	type EscrowStatus = 'pending' | 'shipped' | 'released' | 'refunded';
+
+	interface Escrow {
+		id: string;
+		order_id: string;
+		script_address: string;
+		utxo_tx_hash: string;
+		utxo_output_index: number;
+		status: EscrowStatus;
+		buyer_pkh: string;
+		merchant_pkh: string;
+		paid_at: string;
+		ship_deadline: string;
+		grace_period_end: string | null;
+		datum_cbor: string;
+		shipped_tx_hash: string | null;
+		release_tx_hash: string | null;
+		refund_tx_hash: string | null;
+		created_at: string;
+		updated_at: string;
+	}
+
 	interface Order {
 		id: string;
 		wallet_address: string;
@@ -44,6 +84,8 @@ declare namespace Database {
 		deleted_at: string | null;
 		supported_tokens: SupportedToken | null;
 		shipping_info?: ShippingInfo | null;
+		events?: OrderEvent[] | null;
+		escrow?: Escrow | null;
 	}
 
 	interface ShippingInfo {
@@ -121,5 +163,20 @@ declare namespace Database {
 		is_active: boolean;
 		created_at: string;
 		updated_at: string;
+	}
+
+	type BadgeKind = 'buyer_first_purchase' | 'seller_first_delivery';
+
+	interface IssuedBadge {
+		id: string;
+		kind: BadgeKind;
+		recipient_pkh: string;
+		recipient_address: string;
+		triggering_order_id: string;
+		policy_id: string;
+		asset_name_hex: string;
+		mint_tx_hash: string;
+		metadata: { [key: string]: JsonValue };
+		minted_at: string;
 	}
 }

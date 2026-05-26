@@ -1,7 +1,11 @@
 import { IconCheck, IconClock, IconPackage, IconWallet } from '@tabler/icons-react';
 import { createFileRoute } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
 
 // Components
+import { BadgeList } from '@/components/badges/BadgeList';
+import { EscrowStatusCard } from '@/components/order/EscrowStatusCard';
+import { OrderTraceTimeline } from '@/components/order/OrderTraceTimeline';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -15,6 +19,9 @@ import { useWallet } from '@/hooks/use-wallet';
 // Lib
 import { formatPriceSyncById } from '@/lib/unified-formatter';
 
+// Server-fns
+import { listBadgesByOrderServerFn } from '@/server-fns/issued-badges';
+
 export const Route = createFileRoute('/order-confirmation/$orderId')({
 	component: OrderConfirmation,
 });
@@ -27,6 +34,13 @@ function OrderConfirmation() {
 	const enableShipping = brandConfig.features.enableShipping;
 	const hasProductsPage = !brandConfig.features.disableProductsPage;
 	const productsPath = hasProductsPage ? '/products' : '/';
+	const [badges, setBadges] = useState<Database.IssuedBadge[]>([]);
+
+	useEffect(() => {
+		listBadgesByOrderServerFn({ data: { order_id: orderId } })
+			.then(setBadges)
+			.catch(() => setBadges([]));
+	}, [orderId]);
 
 	if (!isWalletReady) {
 		return (
@@ -248,6 +262,29 @@ function OrderConfirmation() {
 						</div>
 					</div>
 				</div>
+
+				{/* Escrow Status */}
+				{order.escrow && (
+					<div className="mt-6">
+						<EscrowStatusCard escrow={order.escrow} networkProfile={import.meta.env.VITE_TX3_PROFILE ?? 'local'} />
+					</div>
+				)}
+
+				{/* On-chain Trace Timeline */}
+				{order.events && order.events.length > 0 && (
+					<div className="mt-6 bg-white rounded-lg shadow-sm p-6">
+						<h2 className="text-lg font-semibold mb-4">On-chain Activity</h2>
+						<OrderTraceTimeline events={order.events} />
+					</div>
+				)}
+
+				{/* Badges Issued */}
+				{badges.length > 0 && (
+					<div className="mt-6 bg-white rounded-lg shadow-sm p-6">
+						<h2 className="text-lg font-semibold mb-4">Badges Issued</h2>
+						<BadgeList badges={badges} networkProfile={import.meta.env.VITE_TX3_PROFILE ?? 'local'} />
+					</div>
+				)}
 
 				{/* Actions */}
 				<div className="mt-6 bg-white rounded-lg shadow-sm p-6">

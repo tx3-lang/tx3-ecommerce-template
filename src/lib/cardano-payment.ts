@@ -1,13 +1,12 @@
-import { Buffer } from 'buffer';
-
-// Lib
-import { decodeHexAddress } from '@/lib/cardano';
-import { protocol } from '@/lib/tx3/protocol';
-import { submitPaymentServerFn } from '@/server-fns/payments';
+// Server fns — keep all node-only escrow code (node:fs, signer, cbor-x) off
+// the browser bundle by going through createServerFn calls.
+import { prepareLockEscrowServerFn, submitLockEscrowServerFn } from '@/server-fns/payments';
 
 export interface PaymentResult {
 	success: boolean;
 	txHash?: string;
+	lockOutputIndex?: number;
+	datumCbor?: string;
 	error?: string;
 	isTimeout?: boolean;
 }
@@ -32,6 +31,8 @@ export interface MultiCurrencyPaymentResult {
 	completedOrders: Array<{
 		orderId: string;
 		txHash: string;
+		lockOutputIndex: number;
+		datumCbor: string;
 		policyId?: string;
 		assetName?: string;
 	}>;
@@ -44,55 +45,59 @@ export interface MultiCurrencyPaymentResult {
 	allCompleted: boolean;
 }
 
-// Merchant address - this should be configurable via environment variables
-const MERCHANT_ADDRESS = import.meta.env.VITE_MERCHANT_ADDRESS || '';
-
-// Timeout configuration
-// const CARDANO_PAYMENT_TIMEOUT = 60000; // 60 seconds = 3 Cardano blocks
-
 export async function processCardanoPayment(wallet: CardanoWalletAPI, order: OrderPaymentInfo): Promise<PaymentResult> {
 	try {
-		// Determine payment type
 		const isAdaPayment = !order.policyId && !order.assetName;
 
-		const address = decodeHexAddress(await wallet.getChangeAddress());
-		const commonProps = {
-			buyer: address,
-			merchant: MERCHANT_ADDRESS,
-			quantity: order.amount,
-		};
+		// Build the JSON-serialisable value shape for the server fn. For tokens
+		// we no longer pass min-ADA: tx3 computes it via min_utxo(escrow_output)
+		// from the resolved output contents.
+		const value = isAdaPayment
+			? ({ kind: 'ada', lovelace: order.amount } as const)
+			: ({
+					kind: 'token',
+					// biome-ignore lint/style/noNonNullAssertion: guard checked above
+					policyId: order.policyId!,
+					// biome-ignore lint/style/noNonNullAssertion: guard checked above
+					assetName: order.assetName!,
+					quantity: order.amount,
+				} as const);
 
-		const transactionInfo = isAdaPayment
-			? await protocol.payWithAdaTx(commonProps)
-			: await protocol.payWithTokensTx({
-					...commonProps,
-					// biome-ignore lint/style/noNonNullAssertion: Because we check isAdaPayment
-					assetName: Buffer.from(order.assetName!, 'hex'),
-					// biome-ignore lint/style/noNonNullAssertion: Because we check isAdaPayment
-					tokenPolicy: Buffer.from(order.policyId!, 'hex'),
-				});
-
-		const userWitnessSet = await wallet.signTx(transactionInfo.tx, true);
-
-		const submitResult = await submitPaymentServerFn({
+		// Step 1: server resolves the lock tx via TRP.
+		const buyerAddressHex = await wallet.getChangeAddress();
+		const prepared = await prepareLockEscrowServerFn({
 			data: {
-				tx_cbor_hex: transactionInfo.tx,
-				witness_set_cbor_hex: userWitnessSet,
-				tx_hash_hex: transactionInfo.hash,
+				orderId: order.id,
+				value,
+				buyerAddressHex,
 			},
 		});
 
-		// TODO: Check transaction status on chain.
+		// Step 2: browser signs with CIP-30 wallet (partialSign=true).
+		const witnessSetCborHex = await wallet.signTx(prepared.envelope.tx, true);
 
-		if (!submitResult.success) {
-			return {
-				success: false,
-				error: submitResult.error || 'Payment failed',
-				isTimeout: submitResult.error === 'Payment timeout',
-			};
-		}
+		// Step 3: server submits to chain and writes DB rows.
+		const result = await submitLockEscrowServerFn({
+			data: {
+				orderId: order.id,
+				envelope: prepared.envelope,
+				witnessSetCborHex,
+				datumCbor: prepared.datumCbor,
+				scriptAddress: prepared.scriptAddress,
+				buyerPkh: prepared.buyerPkh,
+				merchantPkh: prepared.merchantPkh,
+				paidAt: new Date(prepared.paidAt).toISOString(),
+				shipDeadline: new Date(prepared.shipDeadline).toISOString(),
+				lockOutputIndex: prepared.lockOutputIndex,
+			},
+		});
 
-		return { success: true, txHash: submitResult.txHash || transactionInfo.hash };
+		return {
+			success: true,
+			txHash: result.lockTxHash,
+			lockOutputIndex: prepared.lockOutputIndex,
+			datumCbor: prepared.datumCbor,
+		};
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Payment failed';
 		return {
@@ -135,6 +140,8 @@ export async function processMultiCurrencyPayments(
 				completedOrders.push({
 					orderId: order.id,
 					txHash: result.txHash,
+					lockOutputIndex: result.lockOutputIndex ?? 0,
+					datumCbor: result.datumCbor ?? '',
 					policyId: order.policyId,
 					assetName: order.assetName,
 				});

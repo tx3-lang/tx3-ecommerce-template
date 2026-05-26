@@ -29,7 +29,17 @@ export function useOrders(walletAddress?: string) {
 							)
 						)
 					),
-					supported_tokens (policy_id, asset_name, display_name, decimals)
+					supported_tokens (policy_id, asset_name, display_name, decimals),
+					events:order_events (
+						id,
+						order_id,
+						event_type,
+						tx_hash,
+						payload,
+						submitted_at,
+						confirmed_at
+					),
+					escrow:escrows (*)
 				`)
 				.eq('wallet_address', walletAddress)
 				.is('deleted_at', null)
@@ -69,7 +79,17 @@ export function useOrder(orderId?: string, walletAddress?: string) {
 							)
 						)
 					),
-					supported_tokens (policy_id, asset_name, display_name, decimals)
+					supported_tokens (policy_id, asset_name, display_name, decimals),
+					events:order_events (
+						id,
+						order_id,
+						event_type,
+						tx_hash,
+						payload,
+						submitted_at,
+						confirmed_at
+					),
+					escrow:escrows (*)
 				`)
 				.eq('id', orderId)
 				.eq('wallet_address', walletAddress)

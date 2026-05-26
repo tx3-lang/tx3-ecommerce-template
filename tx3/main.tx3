@@ -2,23 +2,168 @@ party Buyer;
 
 party Merchant;
 
+policy Escrow = 0x6a3fa39242a5f61199fbe9de108d27277000e89f6a59acb6a1b42010;
 
-tx pay_with_ada(
-    quantity: Int
+// Option<Int> — represents Some(value) or None for grace_period_end.
+// IMPORTANT: variant order MUST match Aiken's prelude `Option<a> { Some(a), None }`
+// so the Plutus constructor tags line up: Some = constr 0, None = constr 1.
+// (Declaring None first encodes None as `Constr 0 []`; the validator then reads
+// it as `Some` and calls headList on the empty field list → "Expected a non-empty
+// list but got an empty one".)
+type OptionInt {
+    Some {
+        value: Int,
+    },
+    None,
+}
+
+// Mirrors EscrowDatum in aiken/lib/escrow_types.ak
+type EscrowDatum {
+    buyer: Bytes,
+    merchant: Bytes,
+    order_id: Bytes,
+    paid_at: Int,
+    ship_deadline: Int,
+    grace_period_end: OptionInt,
+}
+
+// Mirrors EscrowRedeemer in aiken/lib/escrow_types.ak
+type EscrowRedeemer {
+    MarkShipped {
+        shipped_at: Int,
+    },
+    Release,
+    Refund,
+}
+
+// Lock ADA into escrow — buyer pays, funds held at script address with Pending datum
+tx lock_escrow_ada(
+    quantity: Int,
+    buyer_pkh: Bytes,
+    merchant_pkh: Bytes,
+    order_id: Bytes,
+    paid_at: Int,
+    ship_deadline: Int,
 ) {
     input source {
         from: Buyer,
-        min_amount: Ada(quantity) + fees,
+        min_amount: Ada(quantity) + fees + min_utxo(change),
     }
-    
-    output payment {
-        to: Merchant,
+
+    output escrow_output {
+        to: Escrow,
         amount: Ada(quantity),
+        datum: EscrowDatum {
+            buyer: buyer_pkh,
+            merchant: merchant_pkh,
+            order_id: order_id,
+            paid_at: paid_at,
+            ship_deadline: ship_deadline,
+            grace_period_end: OptionInt::None {},
+        },
+    }
+
+    output change {
+        to: Buyer,
+        amount: source - Ada(quantity) - fees,
+    }
+
+    signers {
+        Buyer,
+    }
+}
+
+// Lock native tokens into escrow — buyer pays tokens + min-ADA, held at script address
+tx lock_escrow_tokens(
+    token_policy: Bytes,
+    asset_name: Bytes,
+    token_quantity: Int,
+    buyer_pkh: Bytes,
+    merchant_pkh: Bytes,
+    order_id: Bytes,
+    paid_at: Int,
+    ship_deadline: Int,
+) {
+    locals {
+        tokens: AnyAsset(token_policy, asset_name, token_quantity),
+    }
+
+    input* source {
+        from: Buyer,
+        min_amount: fees + tokens + min_utxo(escrow_output) + min_utxo(change),
+    }
+
+    output escrow_output {
+        to: Escrow,
+        amount: tokens + min_utxo(escrow_output),
+        datum: EscrowDatum {
+            buyer: buyer_pkh,
+            merchant: merchant_pkh,
+            order_id: order_id,
+            paid_at: paid_at,
+            ship_deadline: ship_deadline,
+            grace_period_end: OptionInt::None {},
+        },
+    }
+
+    output change {
+        to: Buyer,
+        amount: source - tokens - min_utxo(escrow_output) - fees,
+    }
+
+    signers {
+        Buyer,
+    }
+}
+
+// Mark shipment — merchant spends Pending UTxO and re-locks with Shipped datum
+tx mark_shipped(
+    escrow_utxo: UtxoRef,
+    script_ref_utxo: UtxoRef,
+    shipped_at: Int,
+    grace_period_end: Int,
+) {
+    reference script_ref {
+        ref: script_ref_utxo,
+    }
+
+    input gas {
+        from: Merchant,
+        min_amount: min_utxo(change) + fees,
+    }
+
+    input locked {
+        from: Escrow,
+        ref: escrow_utxo,
+        datum_is: EscrowDatum,
+        redeemer: EscrowRedeemer::MarkShipped {
+            shipped_at: shipped_at,
+        },
+    }
+
+    collateral {
+        from: Merchant,
+        min_amount: fees,
     }
 
     output {
-        to: Buyer,
-        amount: source - Ada(quantity) - fees,
+        to: Escrow,
+        amount: locked,
+        datum: EscrowDatum {
+            buyer: locked.buyer,
+            merchant: locked.merchant,
+            order_id: locked.order_id,
+            paid_at: locked.paid_at,
+            ship_deadline: locked.ship_deadline,
+            grace_period_end: OptionInt::Some {
+                value: grace_period_end,
+            },
+        },
+    }
+
+    output change {
+        to: Merchant,
+        amount: gas - fees,
     }
 
     signers {
@@ -26,28 +171,184 @@ tx pay_with_ada(
     }
 }
 
-tx pay_with_tokens(
-    quantity: Int,
-    token_policy: Bytes,
-    asset_name: Bytes,
+// Release escrow — merchant collects funds after grace period has elapsed
+tx release_escrow(
+    escrow_utxo: UtxoRef,
+    script_ref_utxo: UtxoRef,
 ) {
-    locals {
-        tokens: AnyAsset(token_policy, asset_name, quantity),
+    // The validator's check_release requires a Finite lower bound
+    // (valid_from >= grace_period_end). Without a validity block the on-chain
+    // lower bound is NegativeInfinity and the script returns False.
+    validity {
+        since_slot: tip_slot(),
     }
 
-    input* source {
-        from: Buyer,
-        min_amount: fees + tokens + min_utxo(payment),
+    reference script_ref {
+        ref: script_ref_utxo,
     }
 
-    output payment {
+    input gas {
+        from: Merchant,
+        min_amount: min_utxo(change) + fees,
+    }
+
+    input locked {
+        from: Escrow,
+        ref: escrow_utxo,
+        datum_is: EscrowDatum,
+        redeemer: EscrowRedeemer::Release {},
+    }
+
+    collateral {
+        from: Merchant,
+        min_amount: fees,
+    }
+
+    output change {
         to: Merchant,
-        amount: tokens + min_utxo(payment),
+        amount: gas + locked - fees,
+    }
+
+    signers {
+        Merchant,
+    }
+}
+
+// Refund escrow — buyer reclaims funds after ship_deadline has passed
+tx refund_escrow(
+    escrow_utxo: UtxoRef,
+    script_ref_utxo: UtxoRef,
+) {
+    // The validator's check_refund requires a Finite lower bound
+    // (valid_from >= ship_deadline). Without a validity block the on-chain
+    // lower bound is NegativeInfinity and the script returns False.
+    validity {
+        since_slot: tip_slot(),
+    }
+
+    reference script_ref {
+        ref: script_ref_utxo,
+    }
+
+    input gas {
+        from: Buyer,
+        min_amount: fees,
+    }
+
+    input locked {
+        from: Escrow,
+        ref: escrow_utxo,
+        datum_is: EscrowDatum,
+        redeemer: EscrowRedeemer::Refund {},
+    }
+
+    collateral {
+        from: Buyer,
+        min_amount: fees,
     }
 
     output {
         to: Buyer,
-        amount: source - tokens - fees - min_utxo(payment),
+        amount: gas + locked - fees,
+    }
+
+    signers {
+        Buyer,
+    }
+}
+
+// Mint a single reputation badge NFT to a recipient.
+//
+// Badge minting policy id (config) = the badges validator applied to the merchant
+// PKH. It is deterministic, so the raw hash is inlined as a Bytes literal in
+// AnyAsset below — a `policy` symbol can't be used there (it resolves to a Hash,
+// not Bytes). Regenerate (e.g. if the merchant key changes) with:
+//   aiken blueprint apply -m badges -v badges 581c<merchant_pkh>
+// The applied script is published once as a reference UTxO and supplied at mint
+// time via badge_script_ref (BADGE_SCRIPT_REF_TX_HASH / _OUTPUT_INDEX). The node
+// links the reference script to this mint by matching its hash to the policy id.
+tx mint_badge(
+    asset_name: Bytes,
+    badge_script_ref: UtxoRef,
+    recipient_address: Address,
+    metadata: Bytes,
+) {
+    locals {
+        badge: AnyAsset(0xd94bb23669f1dc793bafa1373b9afdb2cd5b714dbea72b92852cd513, asset_name, 1),
+    }
+
+    reference badge_script {
+        ref: badge_script_ref,
+    }
+
+    input source {
+        from: Merchant,
+        min_amount: fees + min_utxo(badge_output) + min_utxo(change),
+    }
+
+    collateral {
+        from: Merchant,
+        min_amount: fees,
+    }
+
+    mint {
+        amount: badge,
+        redeemer: (),
+    }
+
+    output badge_output {
+        to: recipient_address,
+        amount: badge + min_utxo(badge_output),
+    }
+
+    output change {
+        to: Merchant,
+        amount: source - fees - min_utxo(badge_output),
+    }
+
+    signers {
+        Merchant,
+    }
+
+    metadata {
+        721: metadata,
+    }
+}
+
+// Record an order lifecycle event on-chain via tx metadata (traceability).
+//
+// Cardano metadata limits every primitive String/Bytes value to 64 bytes, so
+// we split the payload across distinct integer labels instead of cramming the
+// whole JSON into a single value. The merchant spends one of their UTxOs and
+// the entire input value minus fees is returned (see Decision Log entry on
+// `source - fees` change-output preservation).
+//
+// Metadata layout (one entry per label):
+//   1337: event   — short ASCII tag ("paid"/"shipped"/"completed"/"cancelled")
+//   1338: order_id — UTF-8 of the UUID string (36 bytes, fits in 64)
+//   1339: ts      — Unix seconds (Int)
+//   1340: extra   — event-specific freeform bytes (tracking number, reason, or empty)
+tx record_order_event(
+    event: Bytes,
+    order_id: Bytes,
+    ts: Int,
+    extra: Bytes,
+) {
+    input source {
+        from: Merchant,
+        min_amount: min_utxo(change) + fees,
+    }
+
+    output change {
+        to: Merchant,
+        amount: source - fees,
+    }
+
+    metadata {
+        1337: event,
+        1338: order_id,
+        1339: ts,
+        1340: extra,
     }
 
     signers {

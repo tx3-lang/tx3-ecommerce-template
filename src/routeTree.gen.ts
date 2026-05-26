@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as WalletAddressRouteImport } from './routes/wallet.$address'
 import { Route as OrderConfirmationOrderIdRouteImport } from './routes/order-confirmation.$orderId'
 import { Route as ApiProductsRouteImport } from './routes/api/products'
 import { Route as ApiOrdersRouteImport } from './routes/api/orders'
@@ -21,6 +22,11 @@ import { Route as shopProductProductIdRouteImport } from './routes/(shop)/produc
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WalletAddressRoute = WalletAddressRouteImport.update({
+  id: '/wallet/$address',
+  path: '/wallet/$address',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrderConfirmationOrderIdRoute =
@@ -68,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/api/orders': typeof ApiOrdersRoute
   '/api/products': typeof ApiProductsRoute
   '/order-confirmation/$orderId': typeof OrderConfirmationOrderIdRoute
+  '/wallet/$address': typeof WalletAddressRoute
   '/product/$productId': typeof shopProductProductIdRoute
 }
 export interface FileRoutesByTo {
@@ -78,6 +85,7 @@ export interface FileRoutesByTo {
   '/api/orders': typeof ApiOrdersRoute
   '/api/products': typeof ApiProductsRoute
   '/order-confirmation/$orderId': typeof OrderConfirmationOrderIdRoute
+  '/wallet/$address': typeof WalletAddressRoute
   '/product/$productId': typeof shopProductProductIdRoute
 }
 export interface FileRoutesById {
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/api/orders': typeof ApiOrdersRoute
   '/api/products': typeof ApiProductsRoute
   '/order-confirmation/$orderId': typeof OrderConfirmationOrderIdRoute
+  '/wallet/$address': typeof WalletAddressRoute
   '/(shop)/product/$productId': typeof shopProductProductIdRoute
 }
 export interface FileRouteTypes {
@@ -101,6 +110,7 @@ export interface FileRouteTypes {
     | '/api/orders'
     | '/api/products'
     | '/order-confirmation/$orderId'
+    | '/wallet/$address'
     | '/product/$productId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
     | '/api/orders'
     | '/api/products'
     | '/order-confirmation/$orderId'
+    | '/wallet/$address'
     | '/product/$productId'
   id:
     | '__root__'
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/api/orders'
     | '/api/products'
     | '/order-confirmation/$orderId'
+    | '/wallet/$address'
     | '/(shop)/product/$productId'
   fileRoutesById: FileRoutesById
 }
@@ -132,6 +144,7 @@ export interface RootRouteChildren {
   ApiOrdersRoute: typeof ApiOrdersRoute
   ApiProductsRoute: typeof ApiProductsRoute
   OrderConfirmationOrderIdRoute: typeof OrderConfirmationOrderIdRoute
+  WalletAddressRoute: typeof WalletAddressRoute
   shopProductProductIdRoute: typeof shopProductProductIdRoute
 }
 
@@ -142,6 +155,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/wallet/$address': {
+      id: '/wallet/$address'
+      path: '/wallet/$address'
+      fullPath: '/wallet/$address'
+      preLoaderRoute: typeof WalletAddressRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/order-confirmation/$orderId': {
@@ -204,6 +224,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOrdersRoute: ApiOrdersRoute,
   ApiProductsRoute: ApiProductsRoute,
   OrderConfirmationOrderIdRoute: OrderConfirmationOrderIdRoute,
+  WalletAddressRoute: WalletAddressRoute,
   shopProductProductIdRoute: shopProductProductIdRoute,
 }
 export const routeTree = rootRouteImport
