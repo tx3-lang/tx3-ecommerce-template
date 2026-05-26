@@ -320,10 +320,7 @@ export async function prepareLockEscrowTx(
  * sends it together with the original tx body via TRP. Returns the tx hash
  * (matches `envelope.hash` from `prepareLockEscrowTx`).
  */
-export async function submitLockEscrowTx(
-	envelope: TxEnvelope,
-	witnessSetCborHex: string,
-): Promise<{ txHash: string }> {
+export async function submitLockEscrowTx(envelope: TxEnvelope, witnessSetCborHex: string): Promise<{ txHash: string }> {
 	const { trpEndpoint, trpApiKey, profile } = getNetworkConfig();
 
 	const clientOptions = trpApiKey

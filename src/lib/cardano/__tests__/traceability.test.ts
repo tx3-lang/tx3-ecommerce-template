@@ -194,11 +194,9 @@ describe('submitPaidTrace', () => {
 			await submitPaidTrace('order-client-opts');
 
 			expect(mockClientConstructor).toHaveBeenCalledOnce();
-			expect(mockClientConstructor).toHaveBeenCalledWith(
-				{ endpoint: STUB_CONFIG.trpEndpoint },
-				STUB_CONFIG.profile,
-				{ merchant: STUB_CONFIG.merchantAddress },
-			);
+			expect(mockClientConstructor).toHaveBeenCalledWith({ endpoint: STUB_CONFIG.trpEndpoint }, STUB_CONFIG.profile, {
+				merchant: STUB_CONFIG.merchantAddress,
+			});
 		});
 	});
 

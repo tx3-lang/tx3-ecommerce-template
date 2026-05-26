@@ -132,7 +132,12 @@ beforeEach(() => {
 
 describe('metadata', () => {
 	it('returns a 721 payload nested by policy_id then asset_name', async () => {
-		const result = await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-123');
+		const result = await submitMintBadge(
+			'buyer_first_purchase',
+			STUB_RECIPIENT_PKH,
+			STUB_RECIPIENT_ADDRESS,
+			'order-123',
+		);
 
 		const meta = result.metadata as Record<string, unknown>;
 		expect(meta).toHaveProperty('721');
@@ -144,7 +149,12 @@ describe('metadata', () => {
 
 	it('includes name, image (from IPFS CID), description, kind, order_id, merchant, issued_at in the returned payload', async () => {
 		const before = new Date().toISOString();
-		const result = await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-metadata-full');
+		const result = await submitMintBadge(
+			'buyer_first_purchase',
+			STUB_RECIPIENT_PKH,
+			STUB_RECIPIENT_ADDRESS,
+			'order-metadata-full',
+		);
 		const after = new Date().toISOString();
 
 		const cip25 = (result.metadata as Record<string, unknown>)['721'] as Record<string, Record<string, unknown>>;
@@ -290,10 +300,8 @@ describe('client construction', () => {
 		await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-client');
 
 		expect(mockClientConstructor).toHaveBeenCalledOnce();
-		expect(mockClientConstructor).toHaveBeenCalledWith(
-			{ endpoint: STUB_CONFIG.trpEndpoint },
-			STUB_CONFIG.profile,
-			{ merchant: STUB_CONFIG.merchantAddress },
-		);
+		expect(mockClientConstructor).toHaveBeenCalledWith({ endpoint: STUB_CONFIG.trpEndpoint }, STUB_CONFIG.profile, {
+			merchant: STUB_CONFIG.merchantAddress,
+		});
 	});
 });

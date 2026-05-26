@@ -881,9 +881,9 @@ describe('submitRefundEscrow', () => {
 			const err = new Error('ChainUnavailable: refundEscrow failed');
 			mockRefundEscrow.mockRejectedValueOnce(err);
 
-			await expect(
-				submitRefundEscrow('order-ref-err', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32),
-			).rejects.toThrow('ChainUnavailable: refundEscrow failed');
+			await expect(submitRefundEscrow('order-ref-err', STUB_BUYER_HASH_SIGNER, STUB_BUYER_BECH32)).rejects.toThrow(
+				'ChainUnavailable: refundEscrow failed',
+			);
 		});
 	});
 });

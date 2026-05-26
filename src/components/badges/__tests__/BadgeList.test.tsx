@@ -57,9 +57,7 @@ describe('BadgeList — rendering', () => {
 	});
 
 	it('each card shows the badge description', () => {
-		const badges = [
-			makeBadge({ id: 'badge-a', metadata: { name: 'My Badge', description: 'A nice description' } }),
-		];
+		const badges = [makeBadge({ id: 'badge-a', metadata: { name: 'My Badge', description: 'A nice description' } })];
 		render(<BadgeList badges={badges} networkProfile="preview" />);
 		expect(screen.getByText('A nice description')).toBeTruthy();
 	});
