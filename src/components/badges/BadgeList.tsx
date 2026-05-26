@@ -7,15 +7,35 @@ interface BadgeListProps {
 }
 
 // ---------------------------------------------------------------------------
-// Constants
+// Helpers
 // ---------------------------------------------------------------------------
-const IPFS_GATEWAY = 'https://ipfs.io/ipfs/';
 
-function resolveIpfsUrl(url: string): string {
-	if (url.startsWith('ipfs://')) {
-		return `${IPFS_GATEWAY}${url.slice(7)}`;
+/**
+ * Badge display fields are persisted as a CIP-25 payload
+ * (`metadata['721'][policyId][assetName] = { name, image, description, ... }`),
+ * but older/test rows store them flat at the metadata root. Resolve both shapes
+ * to the inner record so the card always finds name/description.
+ */
+function extractDisplayMeta(badge: Database.IssuedBadge): Record<string, unknown> {
+	const meta = (badge.metadata ?? {}) as Record<string, unknown>;
+	const cip25 = meta['721'];
+
+	if (cip25 && typeof cip25 === 'object') {
+		const policies = cip25 as Record<string, unknown>;
+		const byPolicy = (policies[badge.policy_id] ?? Object.values(policies)[0]) as Record<string, unknown> | undefined;
+
+		if (byPolicy && typeof byPolicy === 'object') {
+			const byAsset = (byPolicy[badge.asset_name_hex] ?? Object.values(byPolicy)[0]) as
+				| Record<string, unknown>
+				| undefined;
+
+			if (byAsset && typeof byAsset === 'object') {
+				return byAsset;
+			}
+		}
 	}
-	return url;
+
+	return meta;
 }
 
 function buildExplorerUrl(txHash: string, profile?: string): string | null {
@@ -42,25 +62,19 @@ export function BadgeList({ badges, networkProfile }: BadgeListProps) {
 	return (
 		<div className="space-y-4">
 			{sorted.map(badge => {
-				const imageUrl = resolveIpfsUrl(String(badge.metadata.image ?? ''));
+				const meta = extractDisplayMeta(badge);
+				const name = String(meta.name ?? 'Badge');
+				const description = meta.description != null ? String(meta.description) : null;
 				const explorerUrl = buildExplorerUrl(badge.mint_tx_hash, networkProfile);
 
 				return (
 					<div key={badge.id} data-testid="badge-card" className="bg-white rounded-lg shadow-sm p-6">
 						<div className="flex items-start gap-4">
-							<img
-								data-testid="badge-image"
-								src={imageUrl}
-								alt={String(badge.metadata.name ?? 'Badge')}
-								className="w-16 h-16 rounded-lg object-cover"
-							/>
 							<div className="flex-1 min-w-0">
 								<h3 data-testid="badge-name" className="text-lg font-semibold">
-									{String(badge.metadata.name ?? '')}
+									{name}
 								</h3>
-								{badge.metadata.description != null && (
-									<p className="text-sm text-gray-600 mt-1">{String(badge.metadata.description)}</p>
-								)}
+								{description != null && <p className="text-sm text-gray-600 mt-1">{description}</p>}
 								<div className="mt-2">
 									{explorerUrl ? (
 										<a

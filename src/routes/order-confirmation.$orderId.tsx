@@ -20,7 +20,7 @@ import { useWallet } from '@/hooks/use-wallet';
 import { formatPriceSyncById } from '@/lib/unified-formatter';
 
 // Server-fns
-import { listBadgesByOrder } from '@/server-fns/issued-badges';
+import { listBadgesByOrderServerFn } from '@/server-fns/issued-badges';
 
 export const Route = createFileRoute('/order-confirmation/$orderId')({
 	component: OrderConfirmation,
@@ -37,7 +37,7 @@ function OrderConfirmation() {
 	const [badges, setBadges] = useState<Database.IssuedBadge[]>([]);
 
 	useEffect(() => {
-		listBadgesByOrder(orderId)
+		listBadgesByOrderServerFn({ data: { order_id: orderId } })
 			.then(setBadges)
 			.catch(() => setBadges([]));
 	}, [orderId]);

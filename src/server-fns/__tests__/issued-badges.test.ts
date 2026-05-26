@@ -164,8 +164,8 @@ describe('listBadgesByRecipient', () => {
 		];
 
 		const mockOrderResolved = vi.fn().mockResolvedValueOnce({ data: badges, error: null });
-		const mockEqChained = vi.fn(() => ({ order: mockOrderResolved }));
-		const mockSelectChained = vi.fn(() => ({ eq: mockEqChained }));
+		const mockInChained = vi.fn(() => ({ order: mockOrderResolved }));
+		const mockSelectChained = vi.fn(() => ({ in: mockInChained }));
 
 		mockFrom.mockReturnValueOnce({
 			insert: mockInsert,
@@ -175,15 +175,15 @@ describe('listBadgesByRecipient', () => {
 		const result = await listBadgesByRecipient('addr_test1_abc123');
 
 		expect(mockFrom).toHaveBeenCalledWith('issued_badges');
-		expect(mockEqChained).toHaveBeenCalledWith('recipient_address', 'addr_test1_abc123');
+		expect(mockInChained).toHaveBeenCalledWith('recipient_address', expect.arrayContaining(['addr_test1_abc123']));
 		expect(mockOrderResolved).toHaveBeenCalledWith('minted_at', { ascending: false });
 		expect(result).toEqual(badges);
 	});
 
 	it('returns an empty array when no badges exist for the address', async () => {
 		const mockOrderResolved = vi.fn().mockResolvedValueOnce({ data: [], error: null });
-		const mockEqChained = vi.fn(() => ({ order: mockOrderResolved }));
-		const mockSelectChained = vi.fn(() => ({ eq: mockEqChained }));
+		const mockInChained = vi.fn(() => ({ order: mockOrderResolved }));
+		const mockSelectChained = vi.fn(() => ({ in: mockInChained }));
 
 		mockFrom.mockReturnValueOnce({
 			insert: mockInsert,
@@ -199,8 +199,8 @@ describe('listBadgesByRecipient', () => {
 			data: null,
 			error: { code: '42P01', message: 'table not found' },
 		});
-		const mockEqChained = vi.fn(() => ({ order: mockOrderResolved }));
-		const mockSelectChained = vi.fn(() => ({ eq: mockEqChained }));
+		const mockInChained = vi.fn(() => ({ order: mockOrderResolved }));
+		const mockSelectChained = vi.fn(() => ({ in: mockInChained }));
 
 		mockFrom.mockReturnValueOnce({
 			insert: mockInsert,
@@ -208,6 +208,40 @@ describe('listBadgesByRecipient', () => {
 		});
 
 		await expect(listBadgesByRecipient('bad-addr')).rejects.toThrow('table not found');
+	});
+
+	it('looks up by both bech32 and hex forms when given a bech32 address', async () => {
+		const hex = `00${'aa'.repeat(28)}${'bb'.repeat(28)}`;
+		const bech =
+			'addr_test1qz424242424242424242424242424242424242424242424mhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwasmdp8x6';
+
+		const mockOrderResolved = vi.fn().mockResolvedValueOnce({ data: [], error: null });
+		const mockInChained = vi.fn(() => ({ order: mockOrderResolved }));
+		const mockSelectChained = vi.fn(() => ({ in: mockInChained }));
+		mockFrom.mockReturnValueOnce({ insert: mockInsert, select: mockSelectChained });
+
+		await listBadgesByRecipient(bech);
+
+		const [, variants] = mockInChained.mock.calls[0] as unknown as [string, string[]];
+		expect(variants).toContain(bech);
+		expect(variants).toContain(hex);
+	});
+
+	it('looks up by both hex and bech32 forms when given a hex address', async () => {
+		const hex = `00${'aa'.repeat(28)}${'bb'.repeat(28)}`;
+		const bech =
+			'addr_test1qz424242424242424242424242424242424242424242424mhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwasmdp8x6';
+
+		const mockOrderResolved = vi.fn().mockResolvedValueOnce({ data: [], error: null });
+		const mockInChained = vi.fn(() => ({ order: mockOrderResolved }));
+		const mockSelectChained = vi.fn(() => ({ in: mockInChained }));
+		mockFrom.mockReturnValueOnce({ insert: mockInsert, select: mockSelectChained });
+
+		await listBadgesByRecipient(hex);
+
+		const [, variants] = mockInChained.mock.calls[0] as unknown as [string, string[]];
+		expect(variants).toContain(hex);
+		expect(variants).toContain(bech);
 	});
 });
 

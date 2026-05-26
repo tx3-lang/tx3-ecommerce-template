@@ -1,4 +1,7 @@
+import { createServerFn } from '@tanstack/react-start';
 import { createClient } from '@supabase/supabase-js';
+import { bech32 } from 'bech32';
+import { z } from 'zod';
 
 function getServerSupabase() {
 	const supabaseUrl = process.env.VITE_SUPABASE_URL;
@@ -14,6 +17,59 @@ function getServerSupabase() {
 			persistSession: false,
 		},
 	});
+}
+
+// Byte/hex helpers — kept Buffer-free so this module never pulls a Node-only
+// import (`node:buffer`) into the client bundle; the route imports the
+// createServerFn wrappers from here, so the module is part of the client graph.
+function hexToBytes(hex: string): number[] {
+	const bytes: number[] = [];
+	for (let i = 0; i < hex.length; i += 2) {
+		bytes.push(Number.parseInt(hex.slice(i, i + 2), 16));
+	}
+	return bytes;
+}
+
+function bytesToHex(bytes: ArrayLike<number>): string {
+	let hex = '';
+	for (let i = 0; i < bytes.length; i++) {
+		hex += bytes[i].toString(16).padStart(2, '0');
+	}
+	return hex;
+}
+
+/**
+ * Recipient addresses are stored in the DB as CIP-30 hex (what wallets return),
+ * but users most commonly copy the bech32 form (addr1.../addr_test1.../stake...).
+ * Return every form we can derive from the input so the lookup matches whatever
+ * shape was persisted, regardless of which the caller passed.
+ */
+function addressLookupVariants(address: string): string[] {
+	const input = address.trim();
+	const variants = new Set<string>([input]);
+
+	try {
+		if (input.startsWith('addr') || input.startsWith('stake')) {
+			// bech32 → hex
+			const { words } = bech32.decode(input, 1000);
+			variants.add(bytesToHex(bech32.fromWords(words)));
+		} else if (/^[0-9a-fA-F]+$/.test(input) && input.length % 2 === 0) {
+			// hex → bech32
+			const hex = input.toLowerCase();
+			variants.delete(input);
+			variants.add(hex);
+			const addressType = hex.charAt(0);
+			const networkId = Number(hex.charAt(1));
+			const words = bech32.toWords(hexToBytes(hex));
+			let prefix = ['e', 'f'].includes(addressType) ? 'stake' : 'addr';
+			if (networkId === 0) prefix += '_test';
+			variants.add(bech32.encode(prefix, words, 1000));
+		}
+	} catch {
+		// Not a convertible address — fall back to the raw input only.
+	}
+
+	return [...variants];
 }
 
 type InsertIssuedBadgeData = Pick<
@@ -58,7 +114,7 @@ export async function listBadgesByRecipient(address: string): Promise<Database.I
 	const { data, error } = await supabase
 		.from('issued_badges')
 		.select('*')
-		.eq('recipient_address', address)
+		.in('recipient_address', addressLookupVariants(address))
 		.order('minted_at', { ascending: false });
 
 	if (error) {
@@ -83,3 +139,17 @@ export async function listBadgesByOrder(orderId: string): Promise<Database.Issue
 
 	return (data ?? []) as Database.IssuedBadge[];
 }
+
+/**
+ * Server function wrappers — run the Supabase query on the server (where
+ * SUPABASE_SECRET_KEY lives) and return the rows to the client over RPC.
+ * Client/route code must import these (NOT the plain functions above), so the
+ * service-role client never gets bundled into the browser.
+ */
+export const listBadgesByRecipientServerFn = createServerFn({ method: 'GET' })
+	.inputValidator(z.object({ address: z.string().min(1, 'Address is required') }))
+	.handler(async ({ data }) => listBadgesByRecipient(data.address));
+
+export const listBadgesByOrderServerFn = createServerFn({ method: 'GET' })
+	.inputValidator(z.object({ order_id: z.string().min(1, 'Order ID is required') }))
+	.handler(async ({ data }) => listBadgesByOrder(data.order_id));

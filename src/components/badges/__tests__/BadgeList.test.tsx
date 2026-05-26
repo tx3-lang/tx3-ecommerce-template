@@ -56,29 +56,38 @@ describe('BadgeList — rendering', () => {
 		expect(nameEl.textContent).toBe('My Badge');
 	});
 
-	it('each card shows the badge image with converted IPFS URL', () => {
-		const badges = [makeBadge({ id: 'badge-a', metadata: { image: 'ipfs://bafy123', name: 'B', description: 'D' } })];
+	it('each card shows the badge description', () => {
+		const badges = [
+			makeBadge({ id: 'badge-a', metadata: { name: 'My Badge', description: 'A nice description' } }),
+		];
 		render(<BadgeList badges={badges} networkProfile="preview" />);
-		const img = screen.getByTestId('badge-image') as HTMLImageElement;
-		expect(img.getAttribute('src')).toBe('https://ipfs.io/ipfs/bafy123');
+		expect(screen.getByText('A nice description')).toBeTruthy();
 	});
 
-	it('converts IPFS URLs to HTTP gateway URLs', () => {
+	it('reads name/description from a CIP-25 (721) nested payload', () => {
 		const badges = [
 			makeBadge({
-				id: 'badge-ipfs',
+				id: 'badge-cip25',
+				policy_id: 'pol123',
+				asset_name_hex: 'aa11',
 				metadata: {
-					name: 'IPFS Badge',
-					image: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi',
-					description: 'IPFS test',
+					'721': {
+						pol123: {
+							aa11: { name: 'Nested Badge', description: 'Nested description' },
+						},
+					},
 				},
 			}),
 		];
-		render(<BadgeList badges={badges} networkProfile="local" />);
-		const img = screen.getByTestId('badge-image') as HTMLImageElement;
-		expect(img.getAttribute('src')).toBe(
-			'https://ipfs.io/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi',
-		);
+		render(<BadgeList badges={badges} networkProfile="preview" />);
+		expect(screen.getByTestId('badge-name').textContent).toBe('Nested Badge');
+		expect(screen.getByText('Nested description')).toBeTruthy();
+	});
+
+	it('does not render a badge image', () => {
+		const badges = [makeBadge()];
+		render(<BadgeList badges={badges} networkProfile="preview" />);
+		expect(screen.queryByTestId('badge-image')).toBeNull();
 	});
 
 	it('renders explorer link on preview network', () => {

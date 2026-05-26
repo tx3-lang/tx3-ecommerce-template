@@ -3,7 +3,7 @@ import * as React from 'react';
 
 import { BadgeList } from '@/components/badges/BadgeList';
 import { Spinner } from '@/components/ui/spinner';
-import { listBadgesByRecipient } from '@/server-fns/issued-badges';
+import { listBadgesByRecipientServerFn } from '@/server-fns/issued-badges';
 
 interface WalletPageProps {
 	address: string;
@@ -76,7 +76,7 @@ function WalletPageContainer() {
 		setError(null);
 		setBadges(null);
 
-		listBadgesByRecipient(address)
+		listBadgesByRecipientServerFn({ data: { address } })
 			.then(data => {
 				if (cancelled) return;
 				setBadges(data);

@@ -21,8 +21,6 @@
  */
 
 import { parseArgs } from 'node:util';
-import { blake2b } from '@noble/hashes/blake2.js';
-import { Buffer } from 'buffer';
 import { createClient } from '@supabase/supabase-js';
 
 import type { BadgeKind } from '@/lib/cardano/badges-catalog';
@@ -30,7 +28,6 @@ import { getCatalogEntry } from '@/lib/cardano/badges-catalog';
 import { getPolicyId } from '@/lib/cardano/badges-policy';
 import { submitMintBadge } from '@/lib/cardano/badges';
 import { getNetworkConfig } from '@/lib/cardano/network';
-import { getMerchantSigner } from '@/lib/cardano/signer';
 import { insertIssuedBadge } from '@/server-fns/issued-badges';
 
 // ---------------------------------------------------------------------------
@@ -69,11 +66,6 @@ function buildExplorerUrl(profile: string, txHash: string): string | undefined {
 		return `https://preview.cexplorer.io/tx/${txHash}`;
 	}
 	return undefined;
-}
-
-function deriveMerchantPkh(): string {
-	const pubKeyBytes = Buffer.from(getMerchantSigner().publicKeyHex(), 'hex');
-	return Buffer.from(blake2b(pubKeyBytes, { dkLen: 28 })).toString('hex');
 }
 
 // ---------------------------------------------------------------------------
@@ -203,8 +195,7 @@ export async function main(args: string[]): Promise<MintBadgeResult> {
 	// -----------------------------------------------------------------------
 	// Step 8: Persist issued_badges row
 	// -----------------------------------------------------------------------
-	const merchantPkh = deriveMerchantPkh();
-	const policyId = getPolicyId(merchantPkh);
+	const policyId = getPolicyId();
 
 	await insertIssuedBadge({
 		kind,

@@ -5,20 +5,25 @@
  *   - @/lib/tx3/protocol        — codegen Client (mintBadge + submit)
  *   - ../network.js             — getNetworkConfig
  *   - ../signer.js              — getMerchantSigner
- *   - @noble/hashes/blake2.js   — blake2b for pkh derivation
+ *
+ * badges-policy is NOT mocked: getPolicyId returns the config BADGE_POLICY_ID,
+ * and getBadgeScriptRefUtxo reads BADGE_SCRIPT_REF_* (set below).
  */
 
 import { Buffer } from 'buffer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { BADGE_POLICY_ID } from '../badges-policy.js';
+
 // ---------------------------------------------------------------------------
 // Stub constants
 // ---------------------------------------------------------------------------
 
-const STUB_MERCHANT_PKH = '00112233445566778899aabbccddeeff00112233445566778899';
 const STUB_PUBLIC_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 const STUB_ASSET_NAME = '0001aabbccdd00112233445566778899aabbccddaabbccdd001122334455';
-const STUB_RECIPIENT_ADDRESS = 'addr1test_recipient_address';
+// bech32 address — the mint_badge `recipient_address` param is `Address`, so it
+// is passed straight through as a bech32 string.
+const STUB_RECIPIENT_ADDRESS = 'addr_test1vqyqxqzqgxqyqyqgxqyqyqgxqyqyqgxqyqyqgxqyqgxq8zsh3w';
 const STUB_RECIPIENT_PKH = 'aabbccdd00112233445566778899aabbccddaabbccdd001122334455';
 
 const STUB_CONFIG = {
@@ -41,6 +46,12 @@ const STUB_ENVELOPE = {
 	hash: 'cafebabe00112233445566778899aabbccddeeff00112233445566778899aa',
 };
 
+// Published reference-script UTxO (env-driven, read by getBadgeScriptRefUtxo).
+const STUB_SCRIPT_REF_TX = 'bb'.repeat(32);
+const STUB_SCRIPT_REF_INDEX = 0;
+process.env.BADGE_SCRIPT_REF_TX_HASH = STUB_SCRIPT_REF_TX;
+process.env.BADGE_SCRIPT_REF_OUTPUT_INDEX = String(STUB_SCRIPT_REF_INDEX);
+
 // ---------------------------------------------------------------------------
 // Shared mock fns — declared before vi.mock()
 // ---------------------------------------------------------------------------
@@ -55,17 +66,6 @@ const mockGetMerchantSigner = vi.fn().mockReturnValue({
 	sign: mockSign,
 });
 const mockGetNetworkConfig = vi.fn().mockReturnValue(STUB_CONFIG);
-
-// ---------------------------------------------------------------------------
-// Mock: @noble/hashes/blake2.js
-// ---------------------------------------------------------------------------
-
-const MOCK_BLAKE2B_HASH = Buffer.from(STUB_MERCHANT_PKH, 'hex');
-const mockBlake2b = vi.fn().mockReturnValue(MOCK_BLAKE2B_HASH);
-
-vi.mock('@noble/hashes/blake2.js', () => ({
-	blake2b: mockBlake2b,
-}));
 
 // ---------------------------------------------------------------------------
 // Mock: signer
@@ -88,8 +88,8 @@ vi.mock('../network.js', () => ({
 // ---------------------------------------------------------------------------
 
 vi.mock('@/lib/tx3/protocol', () => {
-	function Client(options: unknown, profile: unknown) {
-		mockClientConstructor(options, profile);
+	function Client(options: unknown, profile: unknown, parties: unknown) {
+		mockClientConstructor(options, profile, parties);
 		return {
 			mintBadge: mockMintBadge,
 			submit: mockSubmit,
@@ -118,58 +118,37 @@ beforeEach(() => {
 	});
 	mockPublicKeyHex.mockReturnValue(STUB_PUBLIC_KEY_HEX);
 	mockSign.mockReturnValue(STUB_WITNESSES);
-	mockBlake2b.mockReturnValue(MOCK_BLAKE2B_HASH);
 	mockMintBadge.mockResolvedValue(STUB_ENVELOPE);
 	mockSubmit.mockResolvedValue({ status: 'accepted' });
 });
 
 // ---------------------------------------------------------------------------
-// Helper to decode metadata from mintBadge call
+// Metadata
+//
+// The rich CIP-25-style payload is RETURNED (for the off-chain issued_badges
+// record + app display); tx3 cannot emit nested CIP-25 maps on chain, so the
+// on-chain metadata is just the badge name as a single primitive (≤64 bytes).
 // ---------------------------------------------------------------------------
 
-function decodeMetadataFromMock(): Record<string, unknown> {
-	const args = mockMintBadge.mock.calls[0][0] as Record<string, unknown>;
-	const metadataHex = args.metadata as string;
-	return JSON.parse(Buffer.from(metadataHex, 'hex').toString('utf8'));
-}
+describe('metadata', () => {
+	it('returns a 721 payload nested by policy_id then asset_name', async () => {
+		const result = await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-123');
 
-// ---------------------------------------------------------------------------
-// CIP-25 metadata shape
-// ---------------------------------------------------------------------------
-
-describe('CIP-25 metadata', () => {
-	it('builds metadata with the 721 label as top-level key', async () => {
-		await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-123');
-
-		const metadata = decodeMetadataFromMock();
-		expect(metadata).toHaveProperty('721');
-	});
-
-	it('nests the asset under the policy_id hex', async () => {
-		await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-123');
-
-		const metadata = decodeMetadataFromMock();
-		const cip25 = metadata['721'] as Record<string, unknown>;
-		expect(cip25).toHaveProperty(STUB_MERCHANT_PKH);
-	});
-
-	it('nests the asset metadata under the asset_name_hex', async () => {
-		await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-123');
-
-		const metadata = decodeMetadataFromMock();
-		const cip25 = metadata['721'] as Record<string, unknown>;
-		const asset = cip25[STUB_MERCHANT_PKH] as Record<string, unknown>;
+		const meta = result.metadata as Record<string, unknown>;
+		expect(meta).toHaveProperty('721');
+		const cip25 = meta['721'] as Record<string, unknown>;
+		expect(cip25).toHaveProperty(BADGE_POLICY_ID);
+		const asset = cip25[BADGE_POLICY_ID] as Record<string, unknown>;
 		expect(asset).toHaveProperty(STUB_ASSET_NAME);
 	});
 
-	it('includes name, image (from IPFS CID), description, kind, order_id, merchant, issued_at in asset metadata', async () => {
+	it('includes name, image (from IPFS CID), description, kind, order_id, merchant, issued_at in the returned payload', async () => {
 		const before = new Date().toISOString();
-		await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-metadata-full');
+		const result = await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-metadata-full');
+		const after = new Date().toISOString();
 
-		const metadata = decodeMetadataFromMock();
-		const cip25 = metadata['721'] as Record<string, unknown>;
-		const asset = cip25[STUB_MERCHANT_PKH] as Record<string, Record<string, unknown>>;
-		const badgeData = asset[STUB_ASSET_NAME] as Record<string, unknown>;
+		const cip25 = (result.metadata as Record<string, unknown>)['721'] as Record<string, Record<string, unknown>>;
+		const badgeData = cip25[BADGE_POLICY_ID][STUB_ASSET_NAME] as Record<string, unknown>;
 
 		expect(badgeData.name).toBe('First Purchase');
 		expect(badgeData.image).toBe('ipfs://bafyplaceholder1buyerfirstpurchase');
@@ -179,44 +158,53 @@ describe('CIP-25 metadata', () => {
 		expect(badgeData.order_id).toBe('order-metadata-full');
 		expect(badgeData.merchant).toBe(STUB_CONFIG.merchantAddress);
 		expect(typeof badgeData.issued_at).toBe('string');
-		const after = new Date().toISOString();
 		expect((badgeData.issued_at as string) >= before).toBe(true);
 		expect((badgeData.issued_at as string) <= after).toBe(true);
+	});
+
+	it('sends only the badge kind as on-chain metadata (a primitive ≤64 bytes)', async () => {
+		await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-onchain-meta');
+
+		const args = mockMintBadge.mock.calls[0][0] as Record<string, unknown>;
+		const bytes = Buffer.from(args.metadata as string, 'hex');
+		expect(bytes.toString('utf8')).toBe('buyer_first_purchase');
+		expect(bytes.length).toBeLessThanOrEqual(64);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Routing
+// Routing — the TRP resolver matches args by their original .tx3 (snake_case)
+// names, and mint_badge uses the `Merchant` party, so the merchant address must
+// be injected as the Client's 3rd constructor arg.
 // ---------------------------------------------------------------------------
 
 describe('routing', () => {
-	it('passes recipientAddress to client.mintBadge', async () => {
+	it('passes recipient_address (bech32) to client.mintBadge', async () => {
 		await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-routing');
 
 		const args = mockMintBadge.mock.calls[0][0] as Record<string, unknown>;
-		expect(args.recipientAddress).toBe(STUB_RECIPIENT_ADDRESS);
-	});
-
-	it('passes policy_id to client.mintBadge', async () => {
-		await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-policy');
-
-		const args = mockMintBadge.mock.calls[0][0] as Record<string, unknown>;
-		expect(args.policyId).toBe(STUB_MERCHANT_PKH);
+		expect(args.recipient_address).toBe(STUB_RECIPIENT_ADDRESS);
 	});
 
 	it('passes asset_name to client.mintBadge', async () => {
 		await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-asset');
 
 		const args = mockMintBadge.mock.calls[0][0] as Record<string, unknown>;
-		expect(args.assetName).toBe(STUB_ASSET_NAME);
+		expect(args.asset_name).toBe(STUB_ASSET_NAME);
 	});
 
-	it('passes applied_script_cbor to client.mintBadge', async () => {
+	it('passes badge_script_ref as the published "<txid>#<index>" wire form', async () => {
 		await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-script');
 
 		const args = mockMintBadge.mock.calls[0][0] as Record<string, unknown>;
-		expect(typeof args.appliedScriptCbor).toBe('string');
-		expect((args.appliedScriptCbor as string).length).toBeGreaterThan(0);
+		expect(args.badge_script_ref).toBe(`${STUB_SCRIPT_REF_TX}#${STUB_SCRIPT_REF_INDEX}`);
+	});
+
+	it('injects the merchant party as the Client 3rd constructor arg', async () => {
+		await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-parties');
+
+		const parties = mockClientConstructor.mock.calls[0][2] as Record<string, string>;
+		expect(parties).toEqual({ merchant: STUB_CONFIG.merchantAddress });
 	});
 });
 
@@ -298,10 +286,14 @@ describe('error propagation', () => {
 // ---------------------------------------------------------------------------
 
 describe('client construction', () => {
-	it('constructs Client with the endpoint and profile from network config', async () => {
+	it('constructs Client with the endpoint, profile, and merchant party from network config', async () => {
 		await submitMintBadge('buyer_first_purchase', STUB_RECIPIENT_PKH, STUB_RECIPIENT_ADDRESS, 'order-client');
 
 		expect(mockClientConstructor).toHaveBeenCalledOnce();
-		expect(mockClientConstructor).toHaveBeenCalledWith({ endpoint: STUB_CONFIG.trpEndpoint }, STUB_CONFIG.profile);
+		expect(mockClientConstructor).toHaveBeenCalledWith(
+			{ endpoint: STUB_CONFIG.trpEndpoint },
+			STUB_CONFIG.profile,
+			{ merchant: STUB_CONFIG.merchantAddress },
+		);
 	});
 });

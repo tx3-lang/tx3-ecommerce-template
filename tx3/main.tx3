@@ -257,16 +257,28 @@ tx refund_escrow(
     }
 }
 
-// Mint a single reputation badge NFT to a recipient with CIP-25 metadata
+// Mint a single reputation badge NFT to a recipient.
+//
+// Badge minting policy id (config) = the badges validator applied to the merchant
+// PKH. It is deterministic, so the raw hash is inlined as a Bytes literal in
+// AnyAsset below — a `policy` symbol can't be used there (it resolves to a Hash,
+// not Bytes). Regenerate (e.g. if the merchant key changes) with:
+//   aiken blueprint apply -m badges -v badges 581c<merchant_pkh>
+// The applied script is published once as a reference UTxO and supplied at mint
+// time via badge_script_ref (BADGE_SCRIPT_REF_TX_HASH / _OUTPUT_INDEX). The node
+// links the reference script to this mint by matching its hash to the policy id.
 tx mint_badge(
-    policy_id: Bytes,
     asset_name: Bytes,
-    applied_script_cbor: Bytes,
-    recipient_address: Bytes,
+    badge_script_ref: UtxoRef,
+    recipient_address: Address,
     metadata: Bytes,
 ) {
     locals {
-        badge: AnyAsset(policy_id, asset_name, 1),
+        badge: AnyAsset(0xd94bb23669f1dc793bafa1373b9afdb2cd5b714dbea72b92852cd513, asset_name, 1),
+    }
+
+    reference badge_script {
+        ref: badge_script_ref,
     }
 
     input source {
@@ -300,11 +312,6 @@ tx mint_badge(
 
     metadata {
         721: metadata,
-    }
-
-    cardano::plutus_witness {
-        version: 3,
-        script: applied_script_cbor,
     }
 }
 

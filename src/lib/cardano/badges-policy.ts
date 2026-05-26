@@ -1,106 +1,48 @@
 /**
- * Badges policy loader.
+ * Badges policy config.
  *
- * Loads the compiled badges minting validator from `aiken/plutus.json`,
- * applies the merchant verification key hash parameter, and derives the
- * deterministic policy_id via blake2b-224.
+ * The badges minting validator is parameterized by the merchant PKH. Because the
+ * merchant is fixed, the param-applied policy id is deterministic, so it lives
+ * here as config — it MUST match `policy BadgeMint = 0x...` in tx3/main.tx3.
+ *
+ * Produced offline with Aiken (which applies the param and hashes correctly):
+ *   aiken blueprint apply -m badges -v badges 581c<merchant_pkh>
+ *
+ * The applied minting script is NOT embedded in mint txs. It is published once
+ * as a reference UTxO (a `cardano::publish` tx) and referenced at mint time via
+ * BADGE_SCRIPT_REF_*.
  */
 
-import { readFileSync } from 'node:fs';
-import * as path from 'node:path';
-import { blake2b } from '@noble/hashes/blake2.js';
-import { Buffer } from 'buffer';
+/**
+ * The deterministic badges minting policy id (28-byte blake2b-224 hash of the
+ * param-applied Plutus V3 script). Keep in sync with `policy BadgeMint` in
+ * tx3/main.tx3 — regenerate both with `aiken blueprint apply` if the merchant
+ * key changes.
+ */
+export const BADGE_POLICY_ID = 'd94bb23669f1dc793bafa1373b9afdb2cd5b714dbea72b92852cd513';
 
-const MINT_VALIDATOR_TITLE = 'badges.badges.mint';
-
-interface PlutusParameter {
-	title: string;
-	schema: Record<string, string>;
-}
-
-interface PlutusValidator {
-	title: string;
-	compiledCode: string;
-	hash: string;
-	parameters?: PlutusParameter[];
-}
-
-interface PlutusJson {
-	validators: PlutusValidator[];
-}
-
-function loadPlutusJson(): PlutusJson {
-	const filePath = path.join(process.cwd(), 'aiken', 'plutus.json');
-	const raw = readFileSync(filePath, 'utf-8');
-	return JSON.parse(raw) as PlutusJson;
+/** Returns the badges minting policy id. */
+export function getPolicyId(): string {
+	return BADGE_POLICY_ID;
 }
 
 /**
- * Encodes a 28-byte verification key hash as a Plutus V3 CBOR parameter.
+ * Returns the UTxO ref of the published badges reference script.
  *
- * In Plutus V3, a VerificationKeyHash (ByteArray) is encoded as a CBOR
- * byte string: major type 2 with the length prefix.
- *
- * For 28 bytes (< 24), this is 0x5c (0x40 | 0x1c) followed by the 28 bytes.
+ * Set per environment after the one-time reference-script publish:
+ *   BADGE_SCRIPT_REF_TX_HASH       — hex tx hash of the publish tx
+ *   BADGE_SCRIPT_REF_OUTPUT_INDEX  — index of the output carrying the script
  */
-function encodeParameter(pkhBytes: Buffer): Buffer {
-	return Buffer.concat([Buffer.from([0x5c]), pkhBytes]);
-}
+export function getBadgeScriptRefUtxo(): { txHash: string; outputIndex: number } {
+	const txHash = process.env.BADGE_SCRIPT_REF_TX_HASH;
+	const outputIndexRaw = process.env.BADGE_SCRIPT_REF_OUTPUT_INDEX;
 
-/**
- * Builds the applied Plutus V3 script bytes for policy_id derivation.
- *
- * Cardano policy_id = blake2b-224(serialized_script).
- * For parameterized Plutus V3 scripts, the applied script =
- *   CBOR-encoded parameter(s) + compiled code.
- */
-function buildAppliedScript(merchantPkhHex: string): Buffer {
-	const pkhBytes = Buffer.from(merchantPkhHex, 'hex');
-	const parameterBytes = encodeParameter(pkhBytes);
-	const compiledCodeBytes = getCompiledCodeBytes();
-	return Buffer.concat([parameterBytes, compiledCodeBytes]);
-}
-
-function getCompiledCodeBytes(): Buffer {
-	const plutus = loadPlutusJson();
-	const validator = plutus.validators.find(v => v.title === MINT_VALIDATOR_TITLE);
-	if (!validator) {
-		throw new Error(`MISSING_VALIDATOR: Could not find "${MINT_VALIDATOR_TITLE}" in aiken/plutus.json`);
+	if (!txHash) {
+		throw new Error('MISSING_ENV: BADGE_SCRIPT_REF_TX_HASH is required');
 	}
-	return Buffer.from(validator.compiledCode, 'hex');
-}
-
-/**
- * Returns the deterministic 28-byte (56 hex chars) policy_id for the badges
- * minting policy, derived from the blake2b-224 hash of the applied script.
- *
- * @param merchantPkhHex - 28-byte (56 hex chars) verification key hash
- */
-export function getPolicyId(merchantPkhHex: string): string {
-	const appliedScript = buildAppliedScript(merchantPkhHex);
-	const hash = blake2b(appliedScript, { dkLen: 28 });
-	return Buffer.from(hash).toString('hex');
-}
-
-/**
- * Returns the raw compiled CBOR script bytes (hex string) from plutus.json
- * for the badges minting validator.
- */
-export function getBadgesScriptCbor(): string {
-	const plutus = loadPlutusJson();
-	const validator = plutus.validators.find(v => v.title === MINT_VALIDATOR_TITLE);
-	if (!validator) {
-		throw new Error(`MISSING_VALIDATOR: Could not find "${MINT_VALIDATOR_TITLE}" in aiken/plutus.json`);
+	if (outputIndexRaw === undefined) {
+		throw new Error('MISSING_ENV: BADGE_SCRIPT_REF_OUTPUT_INDEX is required');
 	}
-	return validator.compiledCode;
-}
 
-/**
- * Returns the applied Plutus V3 script CBOR (hex string) with the merchant
- * verification key hash encoded as the parameter.
- *
- * @param merchantPkhHex - 28-byte (56 hex chars) verification key hash
- */
-export function getAppliedScriptCbor(merchantPkhHex: string): string {
-	return buildAppliedScript(merchantPkhHex).toString('hex');
+	return { txHash, outputIndex: Number(outputIndexRaw) };
 }
