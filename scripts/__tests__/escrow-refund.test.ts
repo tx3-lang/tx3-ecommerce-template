@@ -49,10 +49,14 @@ vi.mock('@supabase/supabase-js', () => ({
 // ---------------------------------------------------------------------------
 const mockSubmitRefundEscrow = vi.fn();
 const mockPrepareRefundEscrowTx = vi.fn();
+// Fake hex→bech32 — we only assert the derive WIRING calls it for hex input;
+// the real bech32 conversion is exercised by escrow.ts's lock flow.
+const mockHexAddressToBech32 = vi.fn((hex: string) => `addr_test1mock${hex.slice(0, 6)}`);
 
 vi.mock('@/lib/cardano/escrow', () => ({
 	submitRefundEscrow: mockSubmitRefundEscrow,
 	prepareRefundEscrowTx: mockPrepareRefundEscrowTx,
+	hexAddressToBech32: mockHexAddressToBech32,
 }));
 
 // ---------------------------------------------------------------------------
@@ -184,12 +188,8 @@ describe('arg parsing', () => {
 		await expect(main(['--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow('MISSING_ARG');
 	});
 
-	it('rejects missing --buyer-key with MISSING_ARG error', async () => {
-		await expect(main(['--order-id', ORDER_ID])).rejects.toThrow('MISSING_ARG');
-	});
-
-	it('rejects missing --buyer-address with MISSING_ARG error', async () => {
-		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).rejects.toThrow('MISSING_ARG');
+	it('rejects missing --buyer-key (submit mode) with MISSING_ARG error', async () => {
+		await expect(main(['--order-id', ORDER_ID, '--buyer-address', BUYER_ADDRESS])).rejects.toThrow('MISSING_ARG');
 	});
 
 	it('rejects invalid --buyer-key (wrong length) with INVALID_ARG error', async () => {
@@ -202,6 +202,56 @@ describe('arg parsing', () => {
 
 	it('accepts --order-id and --buyer-key together', async () => {
 		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX, '--buyer-address', BUYER_ADDRESS])).resolves.not.toThrow();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// --buyer-address resolution (optional → derived from orders.wallet_address)
+// ---------------------------------------------------------------------------
+describe('buyer-address resolution', () => {
+	it('derives the buyer address from the order when --buyer-address is omitted', async () => {
+		mockSingle
+			.mockResolvedValueOnce({ data: STUB_ESCROW_PENDING, error: null }) // escrow read
+			.mockResolvedValueOnce({ data: { wallet_address: BUYER_ADDRESS }, error: null }); // order read
+
+		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX]);
+
+		// BUYER_ADDRESS is already bech32 → passed straight through.
+		expect(mockSubmitRefundEscrow).toHaveBeenCalledWith(ORDER_ID, expect.anything(), BUYER_ADDRESS);
+	});
+
+	it('converts a CIP-30 hex wallet_address to bech32 when deriving', async () => {
+		const hexAddr = `00${'aa'.repeat(28)}${'bb'.repeat(28)}`; // header(net 0) + 28B payment + 28B stake
+		mockSingle
+			.mockResolvedValueOnce({ data: STUB_ESCROW_PENDING, error: null })
+			.mockResolvedValueOnce({ data: { wallet_address: hexAddr }, error: null });
+
+		await main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX]);
+
+		expect(mockHexAddressToBech32).toHaveBeenCalledWith(hexAddr);
+		const passedAddress = mockSubmitRefundEscrow.mock.calls[0]?.[2] as string;
+		expect(passedAddress).toMatch(/^addr_test1/);
+	});
+
+	it('works in prepare mode with only --order-id (derives + no key)', async () => {
+		mockSingle
+			.mockResolvedValueOnce({ data: STUB_ESCROW_PENDING, error: null })
+			.mockResolvedValueOnce({ data: { wallet_address: BUYER_ADDRESS }, error: null });
+
+		const result = await main(['--order-id', ORDER_ID, '--prepare']);
+
+		expect(mockPrepareRefundEscrowTx).toHaveBeenCalledWith(ORDER_ID, BUYER_ADDRESS);
+		expect(result.unsignedTx).toBeDefined();
+	});
+
+	it('throws BUYER_ADDRESS_UNRESOLVED when omitted and the order has no wallet_address', async () => {
+		mockSingle
+			.mockResolvedValueOnce({ data: STUB_ESCROW_PENDING, error: null })
+			.mockResolvedValueOnce({ data: { wallet_address: null }, error: null });
+
+		await expect(main(['--order-id', ORDER_ID, '--buyer-key', BUYER_KEY_HEX])).rejects.toThrow(
+			'BUYER_ADDRESS_UNRESOLVED',
+		);
 	});
 });
 

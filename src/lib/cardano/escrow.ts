@@ -183,7 +183,7 @@ function extractPkhFromBech32Address(address: string): Buffer {
  * `getChangeAddress()`) into its bech32 string form. The network tag is read
  * from the low nibble of the address header byte (0 = testnet, 1 = mainnet).
  */
-function hexAddressToBech32(addressHex: string): string {
+export function hexAddressToBech32(addressHex: string): string {
 	const raw = Buffer.from(addressHex, 'hex');
 	if (raw.length < 29) {
 		throw new Error(`INVALID_ADDRESS: address too short (${raw.length} bytes)`);
