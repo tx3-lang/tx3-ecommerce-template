@@ -170,6 +170,7 @@ export async function settleEscrows(opts: SettleOptions = {}): Promise<SettleSum
 
 	for (const escrow of escrows) {
 		const orderId = escrow.order_id;
+		let countedRefundEligible = false;
 
 		try {
 			// -------------------------------------------------------------------
@@ -180,6 +181,7 @@ export async function settleEscrows(opts: SettleOptions = {}): Promise<SettleSum
 				const shipDeadlineMs = new Date(escrow.ship_deadline).getTime();
 				if (nowMs >= shipDeadlineMs) {
 					summary.refundEligible += 1;
+					countedRefundEligible = true;
 					// biome-ignore lint/suspicious/noConsole: intentional CLI output
 					console.warn(
 						`[settle-escrows] order=${orderId} REFUND_ELIGIBLE — ship deadline ${escrow.ship_deadline} has elapsed; buyer may initiate a refund (keeper will not)`,
@@ -258,7 +260,11 @@ export async function settleEscrows(opts: SettleOptions = {}): Promise<SettleSum
 						console.warn(
 							`[settle-escrows] order=${orderId} SHIP_DEADLINE_EXCEEDED — escrow is now refund-eligible for the buyer; mark_shipped rejected: ${msg}`,
 						);
-						summary.errors += 1;
+						// Expected business state, not a processing error. Count as
+						// refund-eligible unless the pre-oracle check above already did.
+						if (!countedRefundEligible) {
+							summary.refundEligible += 1;
+						}
 					} else {
 						throw markErr; // re-throw for the outer catch
 					}
