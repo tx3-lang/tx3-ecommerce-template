@@ -237,11 +237,7 @@ export async function updateOrderStatusWithServiceRole(
  * Does NOT write orders.status nor order_events — those belong to the
  * traceability flow (Feature A ownership split, Decision Log 2026-05-24).
  */
-export async function setOrderTracking(
-	orderId: string,
-	carrier: string,
-	trackingNumber: string,
-): Promise<void> {
+export async function setOrderTracking(orderId: string, carrier: string, trackingNumber: string): Promise<void> {
 	const supabase = getServerSupabase();
 	const { error } = await supabase
 		.from('orders')
