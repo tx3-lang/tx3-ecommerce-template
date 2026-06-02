@@ -45,12 +45,14 @@ vi.mock('@supabase/supabase-js', () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Mock: submitRefundEscrow
+// Mock: submitRefundEscrow + prepareRefundEscrowTx
 // ---------------------------------------------------------------------------
 const mockSubmitRefundEscrow = vi.fn();
+const mockPrepareRefundEscrowTx = vi.fn();
 
 vi.mock('@/lib/cardano/escrow', () => ({
 	submitRefundEscrow: mockSubmitRefundEscrow,
+	prepareRefundEscrowTx: mockPrepareRefundEscrowTx,
 }));
 
 // ---------------------------------------------------------------------------
@@ -128,10 +130,50 @@ beforeEach(() => {
 	// Default happy-path stubs
 	mockGetNetworkConfig.mockReturnValue(STUB_NETWORK_PREVIEW);
 	mockSubmitRefundEscrow.mockResolvedValue(REFUND_RESULT);
+	mockPrepareRefundEscrowTx.mockResolvedValue({
+		envelope: { tx: 'deadbeefcborhex', hash: 'aabbccddtxhash' },
+		escrow: STUB_ESCROW_PENDING,
+	});
 	mockEqUpdate.mockResolvedValue({ error: null });
 
 	// Default: escrow is pending with exceeded ship deadline
 	mockSingle.mockResolvedValue({ data: STUB_ESCROW_PENDING, error: null });
+});
+
+// ---------------------------------------------------------------------------
+// --prepare mode (emit unsigned CBOR, no key, no signing, no DB write)
+// ---------------------------------------------------------------------------
+describe('prepare mode', () => {
+	it('does NOT require --buyer-key', async () => {
+		await expect(
+			main(['--order-id', ORDER_ID, '--buyer-address', BUYER_ADDRESS, '--prepare']),
+		).resolves.not.toThrow();
+	});
+
+	it('returns the unsigned tx CBOR + body hash from prepareRefundEscrowTx', async () => {
+		const result = await main(['--order-id', ORDER_ID, '--buyer-address', BUYER_ADDRESS, '--prepare']);
+
+		expect(mockPrepareRefundEscrowTx).toHaveBeenCalledWith(ORDER_ID, BUYER_ADDRESS);
+		expect(result.unsignedTx).toBe('deadbeefcborhex');
+		expect(result.txBodyHash).toBe('aabbccddtxhash');
+		expect(result.txHash).toBeUndefined();
+	});
+
+	it('does NOT sign or submit and does NOT write the escrows row', async () => {
+		await main(['--order-id', ORDER_ID, '--buyer-address', BUYER_ADDRESS, '--prepare']);
+
+		expect(mockSubmitRefundEscrow).not.toHaveBeenCalled();
+		expect(mockUpdate).not.toHaveBeenCalled();
+	});
+
+	it('still enforces the refund state guard (rejects when not pending)', async () => {
+		mockSingle.mockResolvedValueOnce({ data: { ...STUB_ESCROW_PENDING, status: 'shipped' }, error: null });
+
+		await expect(
+			main(['--order-id', ORDER_ID, '--buyer-address', BUYER_ADDRESS, '--prepare']),
+		).rejects.toThrow('INVALID_STATE');
+		expect(mockPrepareRefundEscrowTx).not.toHaveBeenCalled();
+	});
 });
 
 // ---------------------------------------------------------------------------

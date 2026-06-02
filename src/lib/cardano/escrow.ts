@@ -525,6 +525,49 @@ export async function submitReleaseEscrow(orderId: string): Promise<{ txHash: st
 	return { txHash: envelope.hash };
 }
 
+export interface PreparedRefundEscrow {
+	/** Resolved tx envelope — `envelope.tx` is the unsigned tx CBOR (hex), `envelope.hash` the body hash. */
+	envelope: TxEnvelope;
+	/** The escrow row the refund was resolved against. */
+	escrow: Database.Escrow;
+}
+
+/**
+ * Resolves (but does NOT sign or submit) the `refund_escrow` transaction.
+ *
+ * Returns the unsigned tx envelope so the buyer can sign it out-of-band with
+ * their own wallet (e.g. Eternl) — the buyer's private key never touches this
+ * process. Mirrors `prepareLockEscrowTx`. The resolve block is intentionally a
+ * copy of the head of `submitRefundEscrow` (read escrow + build the tx); keep
+ * the two in sync if the refund tx args ever change.
+ */
+export async function prepareRefundEscrowTx(orderId: string, buyerAddress: string): Promise<PreparedRefundEscrow> {
+	const escrow = await getEscrowByOrderId(orderId);
+	if (!escrow) {
+		throw new Error(`ESCROW_NOT_FOUND: order_id=${orderId}`);
+	}
+
+	const { trpEndpoint, trpApiKey, profile, merchantAddress } = getNetworkConfig();
+	const clientOptions = trpApiKey
+		? { endpoint: trpEndpoint, headers: { 'dmtr-api-key': trpApiKey } }
+		: { endpoint: trpEndpoint };
+	const client = new Client(clientOptions, profile as ProfileName, {
+		buyer: buyerAddress,
+		merchant: merchantAddress,
+	});
+
+	const escrowUtxo = toUtxoRefWire(escrow.utxo_tx_hash, escrow.utxo_output_index);
+	const scriptRefUtxoRaw = getScriptRefUtxo();
+	const scriptRefUtxo = toUtxoRefWire(scriptRefUtxoRaw.txHash, scriptRefUtxoRaw.outputIndex);
+
+	const envelope = await client.refundEscrow({
+		escrow_utxo: escrowUtxo,
+		script_ref_utxo: scriptRefUtxo,
+	} as unknown as Parameters<typeof client.refundEscrow>[0]);
+
+	return { envelope, escrow };
+}
+
 /**
  * Builds and submits the `refund_escrow` transaction.
  *
