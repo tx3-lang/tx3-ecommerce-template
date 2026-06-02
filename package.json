@@ -19,7 +19,8 @@
     "reconcile-escrow": "tsx scripts/reconcile-escrow.ts",
     "escrow-mark-shipped": "tsx scripts/escrow-mark-shipped.ts",
     "escrow-release": "tsx scripts/escrow-release.ts",
-    "escrow-refund": "tsx scripts/escrow-refund.ts"
+    "escrow-refund": "tsx scripts/escrow-refund.ts",
+    "register-tracking": "tsx scripts/register-tracking.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",
