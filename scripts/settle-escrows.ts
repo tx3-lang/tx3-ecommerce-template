@@ -2,8 +2,8 @@
  * CLI script: settle-escrows
  *
  * Usage:
- *   pnpm tsx scripts/settle-escrows.ts [--dry-run]
- *   pnpm settle-escrows [--dry-run]
+ *   pnpm tsx scripts/settle-escrows.ts [--dry-run] [--no-traceability]
+ *   pnpm settle-escrows [--dry-run] [--no-traceability]
  *
  * What it does:
  *   Scans all escrows with status in {'pending','shipped'}, joins each to its
@@ -18,6 +18,11 @@
  *          'mark_shipped' → escrow-mark-shipped main(['--order-id', id])
  *          'release'       → escrow-release main(['--order-id', id])
  *          'none'          → no-op (logged)
+ *     4. Traceability sync (default ON; disable with --no-traceability): after a
+ *        successful escrow transition, also runs the matching traceability script
+ *        (mark_shipped → mark-order-shipped with the tracking number;
+ *        release → mark-order-completed) so orders.status + order_events stay in
+ *        sync. Best-effort: a traceability failure is logged, never fails the escrow.
  *
  * Design properties:
  *   - Idempotent / optimistic: each delegated script re-validates escrow state
@@ -49,6 +54,8 @@ import { decideEscrowAction } from '@/lib/oracle/settlement';
 
 import { main as markShippedMain } from './escrow-mark-shipped.js';
 import { main as releaseMain } from './escrow-release.js';
+import { main as markOrderCompletedMain } from './mark-order-completed.js';
+import { main as markOrderShippedMain } from './mark-order-shipped.js';
 
 import type { OracleClient } from 'shipping-oracle-sdk';
 
@@ -70,6 +77,14 @@ export interface SettleOptions {
 	 * transaction or make any DB write.
 	 */
 	dryRun?: boolean;
+
+	/**
+	 * When true (default), after a successful escrow transition the keeper also
+	 * runs the matching traceability script to keep orders.status + order_events
+	 * in sync (mark_shipped → mark-order-shipped, release → mark-order-completed).
+	 * A traceability failure is logged but never fails the escrow settlement.
+	 */
+	traceability?: boolean;
 }
 
 export interface SettleSummary {
@@ -87,6 +102,10 @@ export interface SettleSummary {
 	errors: number;
 	/** Escrows logged as refund-eligible (pending + ship_deadline elapsed). */
 	refundEligible: number;
+	/** Successful traceability syncs (orders.status + order_events) after a transition. */
+	traced: number;
+	/** Traceability syncs that failed (the escrow transition still succeeded). */
+	traceErrors: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,12 +140,43 @@ interface EscrowWithOrder extends Database.Escrow {
 }
 
 // ---------------------------------------------------------------------------
+// Traceability sync — best-effort. Keeps orders.status + order_events aligned
+// with the escrow lifecycle by delegating to the traceability scripts. A
+// failure here NEVER fails the escrow settlement (the escrow is the source of
+// truth); it is logged so an operator can re-run the traceability script.
+// ---------------------------------------------------------------------------
+
+async function syncOrderTraceability(
+	kind: 'shipped' | 'completed',
+	orderId: string,
+	trackingNumber: string,
+): Promise<boolean> {
+	try {
+		if (kind === 'shipped') {
+			await markOrderShippedMain(['--order-id', orderId, '--tracking', trackingNumber]);
+		} else {
+			await markOrderCompletedMain(['--order-id', orderId]);
+		}
+		// biome-ignore lint/suspicious/noConsole: intentional CLI output
+		console.log(`[settle-escrows] order=${orderId} traceability synced → ${kind}`);
+		return true;
+	} catch (err) {
+		// biome-ignore lint/suspicious/noConsole: intentional CLI stderr
+		console.warn(
+			`[settle-escrows] order=${orderId} traceability sync (${kind}) failed — escrow is already settled; run mark-order-${kind} manually: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return false;
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Core exported function — drives the settle loop
 // ---------------------------------------------------------------------------
 
 export async function settleEscrows(opts: SettleOptions = {}): Promise<SettleSummary> {
 	const oracleClient = opts.oracleClient ?? getOracleClient();
 	const dryRun = opts.dryRun ?? false;
+	const traceability = opts.traceability ?? true;
 
 	if (dryRun) {
 		// biome-ignore lint/suspicious/noConsole: intentional CLI output
@@ -157,6 +207,8 @@ export async function settleEscrows(opts: SettleOptions = {}): Promise<SettleSum
 		noop: 0,
 		errors: 0,
 		refundEligible: 0,
+		traced: 0,
+		traceErrors: 0,
 	};
 
 	// biome-ignore lint/suspicious/noConsole: intentional CLI output
@@ -251,6 +303,11 @@ export async function settleEscrows(opts: SettleOptions = {}): Promise<SettleSum
 					console.log(
 						`[settle-escrows] order=${orderId} MARKED_SHIPPED tx=${result.txHash}${result.explorerUrl ? ` | ${result.explorerUrl}` : ''}`,
 					);
+					if (traceability) {
+						const ok = await syncOrderTraceability('shipped', orderId, trackingNumber);
+						if (ok) summary.traced += 1;
+						else summary.traceErrors += 1;
+					}
 				} catch (markErr) {
 					const msg = markErr instanceof Error ? markErr.message : String(markErr);
 					if (msg.startsWith('SHIP_DEADLINE_EXCEEDED')) {
@@ -276,6 +333,11 @@ export async function settleEscrows(opts: SettleOptions = {}): Promise<SettleSum
 				console.log(
 					`[settle-escrows] order=${orderId} RELEASED tx=${result.txHash}${result.explorerUrl ? ` | ${result.explorerUrl}` : ''}`,
 				);
+				if (traceability) {
+					const ok = await syncOrderTraceability('completed', orderId, trackingNumber);
+					if (ok) summary.traced += 1;
+					else summary.traceErrors += 1;
+				}
 			} else {
 				// action === 'none'
 				summary.noop += 1;
@@ -307,13 +369,15 @@ export async function main(
 		args,
 		options: {
 			'dry-run': { type: 'boolean' },
+			'no-traceability': { type: 'boolean' },
 		},
 		strict: true,
 	});
 
 	const dryRun = values['dry-run'] ?? false;
+	const traceability = !(values['no-traceability'] ?? false);
 
-	return settleEscrows({ oracleClient, dryRun });
+	return settleEscrows({ oracleClient, dryRun, traceability });
 }
 
 // ---------------------------------------------------------------------------
@@ -334,6 +398,8 @@ async function run() {
 			noop: summary.noop,
 			errors: summary.errors,
 			refundEligible: summary.refundEligible,
+				traced: summary.traced,
+				traceErrors: summary.traceErrors,
 		});
 
 		if (summary.errors > 0) {

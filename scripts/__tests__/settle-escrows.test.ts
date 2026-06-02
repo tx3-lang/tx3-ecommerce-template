@@ -47,6 +47,13 @@ const mockReleaseMain = vi.fn().mockResolvedValue({ txHash: 'mocktx-release', ex
 vi.mock('../escrow-mark-shipped.js', () => ({ main: mockMarkShippedMain }));
 vi.mock('../escrow-release.js', () => ({ main: mockReleaseMain }));
 
+// Traceability scripts (orders.status + order_events) — synced by default.
+const mockMarkOrderShippedMain = vi.fn().mockResolvedValue({ txHash: 'mocktx-order-shipped' });
+const mockMarkOrderCompletedMain = vi.fn().mockResolvedValue({ txHash: 'mocktx-order-completed' });
+
+vi.mock('../mark-order-shipped.js', () => ({ main: mockMarkOrderShippedMain }));
+vi.mock('../mark-order-completed.js', () => ({ main: mockMarkOrderCompletedMain }));
+
 // ---------------------------------------------------------------------------
 // Import module under test (AFTER mocks are registered — vi.mock is hoisted)
 // ---------------------------------------------------------------------------
@@ -69,6 +76,8 @@ beforeEach(() => {
 	mockFrom.mockReturnValue({ select: mockSelect });
 	mockMarkShippedMain.mockResolvedValue({ txHash: 'mocktx-mark', explorerUrl: undefined });
 	mockReleaseMain.mockResolvedValue({ txHash: 'mocktx-release', explorerUrl: undefined });
+	mockMarkOrderShippedMain.mockResolvedValue({ txHash: 'mocktx-order-shipped' });
+	mockMarkOrderCompletedMain.mockResolvedValue({ txHash: 'mocktx-order-completed' });
 });
 
 afterEach(() => {
@@ -350,5 +359,65 @@ describe('empty scan', () => {
 		expect(summary.noop).toBe(0);
 		expect(summary.errors).toBe(0);
 		expect(summary.refundEligible).toBe(0);
+		expect(summary.traced).toBe(0);
+		expect(summary.traceErrors).toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Test 9: Traceability sync (default ON; mark→mark-order-shipped, release→completed)
+// ---------------------------------------------------------------------------
+
+describe('traceability sync', () => {
+	it('runs mark-order-shipped (with tracking) after a successful mark, traced=1', async () => {
+		const ORDER_ID = 'order-8888-8888-8888-888888888888';
+		mockRows = [makeRow({ orderId: ORDER_ID, status: 'pending', carrier: 'FEDEX', tracking: 'TRACK-XYZ' })];
+
+		const summary = await settleEscrows({ oracleClient: makeOracle('IN_TRANSIT') });
+
+		expect(mockMarkOrderShippedMain).toHaveBeenCalledWith(['--order-id', ORDER_ID, '--tracking', 'TRACK-XYZ']);
+		expect(summary.traced).toBe(1);
+		expect(summary.traceErrors).toBe(0);
+	});
+
+	it('runs mark-order-completed after a successful release, traced=1', async () => {
+		const ORDER_ID = 'order-9999-9999-9999-999999999999';
+		const pastGrace = new Date(Date.now() - 86400 * 1000).toISOString();
+		mockRows = [makeRow({ orderId: ORDER_ID, status: 'shipped', graceEnd: pastGrace })];
+
+		const summary = await settleEscrows({ oracleClient: makeOracle('DELIVERED') });
+
+		expect(mockMarkOrderCompletedMain).toHaveBeenCalledWith(['--order-id', ORDER_ID]);
+		expect(summary.traced).toBe(1);
+	});
+
+	it('does NOT run traceability when traceability:false', async () => {
+		mockRows = [makeRow({ status: 'pending' })];
+
+		const summary = await settleEscrows({ oracleClient: makeOracle('IN_TRANSIT'), traceability: false });
+
+		expect(mockMarkOrderShippedMain).not.toHaveBeenCalled();
+		expect(summary.marked).toBe(1);
+		expect(summary.traced).toBe(0);
+	});
+
+	it('does NOT run traceability in dry-run', async () => {
+		mockRows = [makeRow({ status: 'pending' })];
+
+		await settleEscrows({ oracleClient: makeOracle('IN_TRANSIT'), dryRun: true });
+
+		expect(mockMarkOrderShippedMain).not.toHaveBeenCalled();
+	});
+
+	it('isolates a traceability failure: escrow still marked, traceErrors=1, errors=0', async () => {
+		mockRows = [makeRow({ status: 'pending' })];
+		mockMarkOrderShippedMain.mockRejectedValueOnce(new Error('INVALID_TRANSITION'));
+
+		const summary = await settleEscrows({ oracleClient: makeOracle('IN_TRANSIT') });
+
+		expect(summary.marked).toBe(1);
+		expect(summary.errors).toBe(0);
+		expect(summary.traceErrors).toBe(1);
+		expect(summary.traced).toBe(0);
 	});
 });
