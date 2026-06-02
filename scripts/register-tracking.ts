@@ -20,8 +20,6 @@ import { parseArgs } from 'node:util';
 
 import { createClient } from '@supabase/supabase-js';
 
-import { setOrderTracking } from '@/server-fns/orders';
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -102,9 +100,22 @@ export async function main(args: string[]): Promise<RegisterTrackingResult> {
 	}
 
 	// -----------------------------------------------------------------------
-	// Step 2: Write carrier + tracking_number (no status / event writes)
+	// Step 2: Write carrier + tracking_number (no status / event writes).
+	//   Inline update with the local service-role client. This script must NOT
+	//   import from @/server-fns/orders — that module pulls in the @/lib barrel
+	//   and the browser Supabase client (import.meta.env), which crashes under
+	//   tsx/Node. The escrow-*.ts scripts follow the same self-contained pattern.
 	// -----------------------------------------------------------------------
-	await setOrderTracking(orderId, carrier, tracking);
+	const { error: updateError } = await supabase
+		.from('orders')
+		.update({ carrier, tracking_number: tracking })
+		.eq('id', orderId);
+
+	if (updateError) {
+		throw new Error(
+			`DB_UPDATE_FAILED: [register-tracking] failed to update order tracking — ${updateError.message}`,
+		);
+	}
 
 	return { orderId, carrier, trackingNumber: tracking };
 }

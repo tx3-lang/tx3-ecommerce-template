@@ -227,26 +227,6 @@ export async function updateOrderStatusWithServiceRole(
 }
 
 /**
- * Write carrier + tracking_number to an orders row.
- *
- * Plain async function (NOT a createServerFn wrapper) — used by the
- * register-tracking CLI script and later the oracle keeper. Both run
- * server-side only, so there is no need to expose this through the
- * TanStack server-fn layer (which would pull it into the client graph).
- *
- * Does NOT write orders.status nor order_events — those belong to the
- * traceability flow (Feature A ownership split, Decision Log 2026-05-24).
- */
-export async function setOrderTracking(orderId: string, carrier: string, trackingNumber: string): Promise<void> {
-	const supabase = getServerSupabase();
-	const { error } = await supabase
-		.from('orders')
-		.update({ carrier, tracking_number: trackingNumber })
-		.eq('id', orderId);
-	if (error) throw new Error(error.message);
-}
-
-/**
  * Create multiple orders (one per currency) with strict validation
  * Uses service role to bypass RLS and ensure atomic transactions
  */

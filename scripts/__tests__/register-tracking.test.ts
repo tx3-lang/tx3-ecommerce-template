@@ -10,7 +10,6 @@
  *
  * All external boundaries are mocked:
  *   - @supabase/supabase-js     — Supabase client (orders SELECT, orders UPDATE)
- *   - @/server-fns/orders       — setOrderTracking
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,7 +19,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 //
 // The script does (two separate `from()` calls):
 //   supabase.from('orders').select('id').eq('id', orderId).single()
-//   (setOrderTracking) supabase.from('orders').update({...}).eq('id', orderId)
+//   supabase.from('orders').update({ carrier, tracking_number }).eq('id', orderId)
 // ---------------------------------------------------------------------------
 
 const mockSingle = vi.fn();
@@ -41,15 +40,6 @@ vi.mock('@supabase/supabase-js', () => ({
 	createClient: vi.fn(() => ({
 		from: mockFrom,
 	})),
-}));
-
-// ---------------------------------------------------------------------------
-// Mock: setOrderTracking
-// ---------------------------------------------------------------------------
-const mockSetOrderTracking = vi.fn();
-
-vi.mock('@/server-fns/orders', () => ({
-	setOrderTracking: mockSetOrderTracking,
 }));
 
 // ---------------------------------------------------------------------------
@@ -77,7 +67,6 @@ beforeEach(() => {
 
 	// Default happy-path stubs
 	mockSingle.mockResolvedValue({ data: STUB_ORDER_ROW, error: null });
-	mockSetOrderTracking.mockResolvedValue(undefined);
 	mockEqUpdate.mockResolvedValue({ error: null });
 });
 
@@ -142,22 +131,28 @@ describe('order existence check', () => {
 });
 
 // ---------------------------------------------------------------------------
-// setOrderTracking call
+// Tracking update (inline orders UPDATE)
 // ---------------------------------------------------------------------------
-describe('setOrderTracking', () => {
-	it('calls setOrderTracking with orderId, carrier, trackingNumber', async () => {
+describe('tracking update', () => {
+	it('updates the orders row with carrier + tracking_number', async () => {
 		await main(['--order-id', ORDER_ID, '--carrier', CARRIER, '--tracking', TRACKING]);
 
-		expect(mockSetOrderTracking).toHaveBeenCalledOnce();
-		expect(mockSetOrderTracking).toHaveBeenCalledWith(ORDER_ID, CARRIER, TRACKING);
+		expect(mockUpdate).toHaveBeenCalledOnce();
+		expect(mockUpdate).toHaveBeenCalledWith({ carrier: CARRIER, tracking_number: TRACKING });
+		expect(mockEqUpdate).toHaveBeenCalledWith('id', ORDER_ID);
 	});
 
-	it('does NOT write orders.status nor order_events (owned by traceability)', async () => {
+	it('throws DB_UPDATE_FAILED when the update errors', async () => {
+		mockEqUpdate.mockResolvedValueOnce({ error: { message: 'boom' } });
+
+		await expect(
+			main(['--order-id', ORDER_ID, '--carrier', CARRIER, '--tracking', TRACKING]),
+		).rejects.toThrow('DB_UPDATE_FAILED');
+	});
+
+	it('writes ONLY the orders table — never order_events or escrows', async () => {
 		await main(['--order-id', ORDER_ID, '--carrier', CARRIER, '--tracking', TRACKING]);
 
-		// The supabase client should only be used for the existence check (orders SELECT)
-		// The update goes through setOrderTracking (mocked), so no direct mockUpdate calls
-		expect(mockUpdate).not.toHaveBeenCalled();
 		expect(mockFrom).not.toHaveBeenCalledWith('order_events');
 		expect(mockFrom).not.toHaveBeenCalledWith('escrows');
 	});
