@@ -2,7 +2,15 @@
  * CLI script: escrow-refund
  *
  * Usage:
+ *   # prepare-only — emit the UNSIGNED tx CBOR to sign + submit in your wallet
+ *   # (e.g. Eternl); your private key never touches this script:
+ *   pnpm tsx scripts/escrow-refund.ts --order-id <uuid> --prepare
+ *
+ *   # all-in-one (signs with the provided buyer key — demo/testing only):
  *   pnpm tsx scripts/escrow-refund.ts --order-id <uuid> --buyer-key <hex>
+ *
+ *   --buyer-address <bech32> is OPTIONAL: when omitted it is derived from the
+ *   order's wallet_address (CIP-30 hex is converted to bech32).
  *
  * Scope (Feature B — escrow state machine ONLY):
  *   This script owns the `escrows` table and the on-chain escrow UTxO. It does
@@ -40,7 +48,7 @@ import { ed25519 } from '@noble/curves/ed25519.js';
 import { createClient } from '@supabase/supabase-js';
 import { Buffer } from 'buffer';
 
-import { submitRefundEscrow } from '@/lib/cardano/escrow';
+import { hexAddressToBech32, prepareRefundEscrowTx, submitRefundEscrow } from '@/lib/cardano/escrow';
 import type { BuyerSigner } from '@/lib/cardano/escrow';
 import { getNetworkConfig } from '@/lib/cardano/network';
 
@@ -51,8 +59,13 @@ import { buildExplorerUrl } from './lib/transition.js';
 // ---------------------------------------------------------------------------
 
 export interface EscrowRefundResult {
-	txHash: string;
+	/** Set in submit (all-in-one) mode — the submitted refund tx hash. */
+	txHash?: string;
 	explorerUrl?: string;
+	/** Set in --prepare mode — the unsigned refund tx CBOR (hex) to sign in the buyer wallet. */
+	unsignedTx?: string;
+	/** Set in --prepare mode — the tx body hash. */
+	txBodyHash?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,24 +145,18 @@ export async function main(args: string[]): Promise<EscrowRefundResult> {
 			'order-id': { type: 'string' },
 			'buyer-key': { type: 'string' },
 			'buyer-address': { type: 'string' },
+			prepare: { type: 'boolean' },
 		},
 		strict: true,
 	});
 
 	const orderId = values['order-id'];
 	const buyerKeyHex = values['buyer-key'];
-	const buyerAddress = values['buyer-address'];
+	let buyerAddress = values['buyer-address'];
+	const prepareOnly = values.prepare ?? false;
 
 	if (!orderId) {
 		throw new Error('MISSING_ARG: --order-id is required');
-	}
-
-	if (!buyerKeyHex) {
-		throw new Error('MISSING_ARG: --buyer-key is required (hex-encoded Ed25519 private key for milestone-mode)');
-	}
-
-	if (!buyerAddress) {
-		throw new Error('MISSING_ARG: --buyer-address is required (bech32 address of the buyer wallet)');
 	}
 
 	// -----------------------------------------------------------------------
@@ -185,6 +192,44 @@ export async function main(args: string[]): Promise<EscrowRefundResult> {
 		throw new Error(
 			`SHIP_DEADLINE_NOT_REACHED: escrow for order ${orderId} ship deadline has not passed yet (${escrow.ship_deadline}). Cannot refund.`,
 		);
+	}
+
+	// -----------------------------------------------------------------------
+	// Resolve the buyer address. If --buyer-address was not given, derive it
+	// from orders.wallet_address (the wallet that placed the order). That value
+	// is CIP-30 hex in the real UI flow, so convert hex → bech32; a value that
+	// is already bech32 (e.g. e2e fixtures) is used as-is.
+	// -----------------------------------------------------------------------
+	if (!buyerAddress) {
+		const { data: orderRow, error: orderError } = await supabase
+			.from('orders')
+			.select('wallet_address')
+			.eq('id', orderId)
+			.single();
+
+		const walletAddress = orderRow?.wallet_address as string | undefined;
+		if (orderError || !walletAddress) {
+			throw new Error(
+				`BUYER_ADDRESS_UNRESOLVED: --buyer-address not provided and orders.wallet_address is empty for order ${orderId}`,
+			);
+		}
+
+		buyerAddress = walletAddress.startsWith('addr') ? walletAddress : hexAddressToBech32(walletAddress);
+	}
+
+	// -----------------------------------------------------------------------
+	// Prepare mode: resolve the UNSIGNED refund tx and return its CBOR for the
+	// buyer to sign + submit out-of-band (e.g. Eternl). No key, no DB write —
+	// run reconcile-escrow once the refund confirms on-chain to sync the row.
+	// -----------------------------------------------------------------------
+	if (prepareOnly) {
+		const { envelope } = await prepareRefundEscrowTx(orderId, buyerAddress);
+		return { unsignedTx: envelope.tx, txBodyHash: envelope.hash };
+	}
+
+	// From here on: submit (all-in-one) mode — the buyer key is required.
+	if (!buyerKeyHex) {
+		throw new Error('MISSING_ARG: --buyer-key is required (hex-encoded Ed25519 private key for milestone-mode)');
 	}
 
 	// -----------------------------------------------------------------------
@@ -232,6 +277,18 @@ export async function main(args: string[]): Promise<EscrowRefundResult> {
 async function run() {
 	try {
 		const result = await main(process.argv.slice(2));
+
+		if (result.unsignedTx) {
+			// biome-ignore lint/suspicious/noConsole: intentional CLI output
+			console.log(
+				'Unsigned refund tx (CBOR hex) — sign + submit it with the buyer wallet (e.g. Eternl). No DB write happened; run reconcile-escrow after it confirms on-chain.',
+			);
+			// biome-ignore lint/suspicious/noConsole: intentional CLI output
+			console.log(result.unsignedTx);
+			// biome-ignore lint/suspicious/noConsole: intentional CLI output
+			console.log(`tx body hash: ${result.txBodyHash}`);
+			return;
+		}
 
 		const orderId = process.argv.find((_, i) => process.argv[i - 1] === '--order-id') ?? 'unknown';
 		// biome-ignore lint/suspicious/noConsole: intentional CLI output

@@ -19,7 +19,9 @@
     "reconcile-escrow": "tsx scripts/reconcile-escrow.ts",
     "escrow-mark-shipped": "tsx scripts/escrow-mark-shipped.ts",
     "escrow-release": "tsx scripts/escrow-release.ts",
-    "escrow-refund": "tsx scripts/escrow-refund.ts"
+    "escrow-refund": "tsx scripts/escrow-refund.ts",
+    "register-tracking": "tsx scripts/register-tracking.ts",
+    "settle-escrows": "tsx scripts/settle-escrows.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",
@@ -39,7 +41,7 @@
     "cbor-x": "^1.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "nitro": "npm:nitro-nightly@latest",
+    "nitro": "npm:nitro-nightly@3.0.1-20260520-201858-14f2fed3",
     "radix-ui": "^1.4.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -47,6 +49,7 @@
     "tailwind-merge": "^3.0.2",
     "tailwindcss": "^4.0.6",
     "tw-animate-css": "^1.3.6",
+    "shipping-oracle-sdk": "file:../../../tx3-lang/shipping-oracle/sdk/typescript",
     "tx3-sdk": "^0.11.0",
     "vite-tsconfig-paths": "^6.0.2",
     "zod": "^4.3.5"

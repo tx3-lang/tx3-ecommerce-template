@@ -223,6 +223,16 @@ export interface LockPaymentFixtureInput {
 	scriptAddress?: string;
 	buyerPkh?: string;
 	merchantPkh?: string;
+	/**
+	 * Optional carrier name (e.g. 'fedex'). When provided, written to orders.carrier
+	 * so the keeper can resolve tracking. Stays null when omitted (no-tracking fallback).
+	 */
+	carrier?: string;
+	/**
+	 * Optional tracking number. When provided, written to orders.tracking_number
+	 * so the keeper can query the oracle. Stays null when omitted (no-tracking fallback).
+	 */
+	trackingNumber?: string;
 }
 
 /**
@@ -243,6 +253,8 @@ export async function insertLockPaymentFixture(input: LockPaymentFixtureInput): 
 		scriptAddress = process.env.E2E_SCRIPT_ADDRESS ?? 'addr_test1_e2e_script',
 		buyerPkh = 'e2e_buyer_pkh',
 		merchantPkh = 'e2e_merchant_pkh',
+		carrier,
+		trackingNumber,
 	} = input;
 
 	const now = new Date();
@@ -266,10 +278,11 @@ export async function insertLockPaymentFixture(input: LockPaymentFixtureInput): 
 		throw new Error(`E2E: failed to insert escrow fixture — ${escrowError.message}`);
 	}
 
-	// Step 2: Update order status to 'paid'
+	// Step 2: Update order status to 'paid', optionally setting carrier + tracking_number
+	// so the keeper can resolve tracking info (Task 2 field storage on orders).
 	const { error: orderError } = await supabase
 		.from('orders')
-		.update({ status: 'paid', cardano_tx_hash: lockTxHash })
+		.update({ status: 'paid', cardano_tx_hash: lockTxHash, carrier, tracking_number: trackingNumber })
 		.eq('id', orderId);
 
 	if (orderError) {

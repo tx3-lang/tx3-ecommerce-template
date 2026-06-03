@@ -78,6 +78,8 @@ declare namespace Database {
 		can_cancel: boolean;
 		token_id: string | null;
 		shipping_id: string | null;
+		carrier: string | null;
+		tracking_number: string | null;
 		order_items: OrderItem[] | null;
 		created_at: string;
 		updated_at: string;

@@ -143,7 +143,7 @@ tx mark_shipped(
 
     collateral {
         from: Merchant,
-        min_amount: fees,
+        min_amount: Ada(5000000),
     }
 
     output {
@@ -201,7 +201,7 @@ tx release_escrow(
 
     collateral {
         from: Merchant,
-        min_amount: fees,
+        min_amount: Ada(5000000),
     }
 
     output change {
@@ -244,7 +244,7 @@ tx refund_escrow(
 
     collateral {
         from: Buyer,
-        min_amount: fees,
+        min_amount: Ada(5000000),
     }
 
     output {
@@ -288,7 +288,7 @@ tx mint_badge(
 
     collateral {
         from: Merchant,
-        min_amount: fees,
+        min_amount: Ada(5000000),
     }
 
     mint {

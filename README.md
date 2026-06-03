@@ -22,6 +22,8 @@ pnpm build
 This project includes advanced Cardano on-chain features (traceability, escrow, reputation).  
 See [docs/advanced-onchain.md](docs/advanced-onchain.md) for details.
 
+For the oracle-driven escrow keeper (`settle-escrows`) that ties the shipping oracle to automatic on-chain settlement, see the [Oracle-Driven Escrow Settlement integration guide](docs/integration-escrow.md).
+
 ## Testing
 
 This project uses [Vitest](https://vitest.dev/) for testing. You can run the tests with:
