@@ -75,8 +75,8 @@ importers:
         specifier: ^3.6.3
         version: 3.6.3(@types/node@24.10.9)(hono@4.11.3)(typescript@5.9.3)
       shipping-oracle-sdk:
-        specifier: file:../../../tx3-lang/shipping-oracle/sdk/typescript
-        version: file:../../../tx3-lang/shipping-oracle/sdk/typescript
+        specifier: file:./vendor/shipping-oracle-sdk
+        version: file:vendor/shipping-oracle-sdk
       tailwind-merge:
         specifier: ^3.0.2
         version: 3.4.0
@@ -3856,8 +3856,8 @@ packages:
     resolution: {integrity: sha512-ObmnIF4hXNg1BqhnHmgbDETF8dLPCggZWBjkQfhZpbszZnYur5DUljTcCHii5LC3J5E0yeO/1LIMyH+UvHQgyw==}
     engines: {node: '>= 0.4'}
 
-  shipping-oracle-sdk@file:../../../tx3-lang/shipping-oracle/sdk/typescript:
-    resolution: {directory: ../../../tx3-lang/shipping-oracle/sdk/typescript, type: directory}
+  shipping-oracle-sdk@file:vendor/shipping-oracle-sdk:
+    resolution: {directory: vendor/shipping-oracle-sdk, type: directory}
     engines: {node: '>=18'}
 
   side-channel-list@1.0.0:
@@ -8266,7 +8266,7 @@ snapshots:
 
   shell-quote@1.8.3: {}
 
-  shipping-oracle-sdk@file:../../../tx3-lang/shipping-oracle/sdk/typescript:
+  shipping-oracle-sdk@file:vendor/shipping-oracle-sdk:
     dependencies:
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0

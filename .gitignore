@@ -14,3 +14,7 @@ todos.json
 supabase/.branches
 supabase/.temp
 aiken/build/
+
+# Vendored prebuilt SDK — keep its dist despite the global "dist" ignore above
+!vendor/shipping-oracle-sdk/dist
+!vendor/shipping-oracle-sdk/dist/**
