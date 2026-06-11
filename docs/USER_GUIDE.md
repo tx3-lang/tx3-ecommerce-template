@@ -34,12 +34,17 @@ Client-side variables (exposed to the browser):
 - `VITE_SUPABASE_URL`: Supabase project URL.
 - `VITE_SUPABASE_ANON_KEY`: Supabase public anon key.
 - `VITE_API_URL`: Optional base URL for external APIs.
-- `VITE_MERCHANT_ADDRESS`: Cardano merchant address.
 
 Server-side variables (do not expose):
 
 - `SUPABASE_SECRET_KEY`: Supabase service role key.
-- `CARDANO_MERCHANT_SKEY`: Cardano signing key for server-side operations (used to sign the buy order transactions)
+- `CARDANO_MERCHANT_SKEY`: Cardano signing key for server-side operations (used to sign the buy order transactions).
+- `MERCHANT_ADDRESS`: Bech32 address of the merchant's backend signer wallet.
+
+For the full list of variables used by the advanced on-chain features (escrow, badges,
+oracle keeper), see [docs/advanced-onchain.md](advanced-onchain.md#required-environment)
+and [docs/integration-escrow.md](integration-escrow.md#required-environment-variables).
+The committed [.env.example](../.env.example) is the source of truth for variable names.
 
 Supabase clients read these values from [src/lib/supabase.ts](src/lib/supabase.ts) and server functions (orders) use the secret key via [src/server-fns/orders.ts](src/server-fns/orders.ts).
 
@@ -56,12 +61,20 @@ For on-chain advanced features (traceability, escrow, reputation), see [docs/adv
 
 ## Vercel deployment
 
-This project is ready for Vercel.
+This project is ready for Vercel — no `vercel.json` is required. It is an SSR app built on
+Nitro, which detects the Vercel environment and emits the correct server output automatically,
+so Vercel deploys it zero-config once the environment variables are set.
 
-1. Import the repository in Vercel.
-2. Set the environment variables listed above in the Vercel project settings.
-3. Use `pnpm install` as the install command and `pnpm build` as the build command.
-4. The default Vite output directory is `dist` (Vercel detects it automatically).
+1. Set up Supabase first (create the project and apply the migrations) — Vercel cannot
+   provision your database. See [Supabase setup](#supabase-setup) above.
+2. Import the repository in Vercel. It auto-detects TanStack Start.
+3. Keep the defaults: install command `pnpm install`, build command `pnpm build`, and
+   **leave the output directory on its default**. Do NOT set it to `dist` — this is an SSR
+   build (Nitro writes the Vercel output), not a static site.
+4. Set the environment variables listed above in the Vercel project settings.
+
+The README has a one-click [Deploy to Vercel](../README.md#deploy-to-vercel) button that
+pre-fills the required variables (Supabase must still be set up first).
 
 ## Where to customize behavior
 
