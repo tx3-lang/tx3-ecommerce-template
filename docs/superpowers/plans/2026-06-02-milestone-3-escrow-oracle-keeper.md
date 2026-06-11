@@ -23,7 +23,7 @@
 - `submitMarkShipped(orderId): Promise<{ txHash, newUtxoRef: { txHash, outputIndex }, newDatumCbor }>` — requires escrow `status='pending'` and on-chain `NOW() < ship_deadline`.
 - `submitReleaseEscrow(orderId): Promise<{ txHash }>` — requires `status='shipped'` and on-chain `NOW() >= grace_period_end`.
 - `submitRefundEscrow(orderId, buyerSigner, buyerAddress)` — buyer-initiated; **the keeper does NOT call this**.
-- Merchant backend signer: `getMerchantSigner()` (`src/lib/cardano/signer.ts`), env `MERCHANT_SKEY` / `MERCHANT_ADDRESS`.
+- Merchant backend signer: `getMerchantSigner()` (`src/lib/cardano/signer.ts`), env `CARDANO_MERCHANT_SKEY` / `MERCHANT_ADDRESS`.
 
 **Escrow DB** (`escrows` table, `supabase/migrations/20260522_escrows.sql`): `order_id` (UNIQUE), `status ∈ {pending,shipped,released,refunded}`, `ship_deadline`, `grace_period_end`, `utxo_*`, `datum_cbor`, `*_tx_hash`. Helpers in `src/lib/db/escrows.ts` (`getEscrowByOrderId`, etc.).
 

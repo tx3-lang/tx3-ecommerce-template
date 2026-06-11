@@ -1,317 +1,106 @@
-Welcome to your new TanStack app! 
+# White-label e-Commerce Platform on Cardano
 
-# Getting Started
+A forkable, configurable **white-label e-commerce template** that settles payments
+directly on Cardano. Catalog, cart, checkout and admin work like any mainstream store,
+but payment happens from the buyer's own wallet via CIP-30 — with optional on-chain
+escrow, order traceability, and reputation badges.
 
-To run this application:
+Built by [TxPipe](https://txpipe.io) under Project Catalyst Fund 14. Released under
+Apache 2.0. This repository is the reference consumer of the companion
+[Shipping Oracle](https://github.com/tx3-lang/shipping-oracle) and is built on
+the [tx3](https://github.com/tx3-lang) toolchain.
+
+## Features
+
+- **Storefront** — product catalog, cart, checkout, multi-currency (ADA + configurable
+  Cardano native tokens).
+- **Native wallet payments** — direct CIP-30 payments (Eternl, Lace) with CBOR-level
+  witness verification, no heavyweight wallet SDK.
+- **Order management** — stock reservation and health-checked automatic cleanup.
+- **White-label by configuration** — branding, theming, and feature flags (disable
+  cart, product pages, or individual on-chain features) without touching the code.
+- **Advanced on-chain features (optional)** — Plutus V3 escrow, immutable order
+  traceability metadata, and reputation badge NFTs. See
+  [docs/advanced-onchain.md](docs/advanced-onchain.md).
+- **Oracle-driven settlement (optional)** — a keeper consumes signed shipping-oracle
+  attestations and drives escrow settlement automatically. See
+  [docs/integration-escrow.md](docs/integration-escrow.md).
+
+## Tech stack
+
+- [TanStack Start](https://tanstack.com/start) (React 19) + [Vite](https://vite.dev/)
+- [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/)
+- [Supabase](https://supabase.com/) (Postgres) for catalog, orders, and lifecycle state
+- [tx3](https://github.com/tx3-lang) transaction definitions + [Aiken](https://aiken-lang.org/)
+  Plutus V3 validators for the on-chain features
+- [Biome](https://biomejs.dev/) for lint/format, [Vitest](https://vitest.dev/) for tests
+
+## Prerequisites
+
+**For the basic storefront:**
+
+- [Node.js](https://nodejs.org/) 20+ and [pnpm](https://pnpm.io/)
+- A [Supabase](https://supabase.com/) project (or the local Supabase CLI — bundled as a
+  dev dependency, run via `pnpm supabase`)
+- A CIP-30 wallet (Eternl or Lace) with funds on your target network (preview, preprod, or mainnet)
+
+**Additionally, for the advanced on-chain features:**
+
+- [Aiken](https://aiken-lang.org/installation-instructions) — to compile the validators
+- [trix](https://github.com/tx3-lang/trix) (the tx3 CLI) — to regenerate the protocol client
+- A TRP endpoint + API key for your target network. A hosted endpoint (preview, preprod,
+  or mainnet) is available from [Demeter](https://demeter.run/); for local development use
+  a [dolos](https://github.com/txpipe/dolos) node with `TX3_PROFILE=local`.
+- A funded wallet on your target network for the merchant backend signer
+
+## Network
+
+The template runs on **any Cardano network** — mainnet, preprod, or preview. The active
+network is selected by your TRP endpoint and `TX3_PROFILE` (see [.env.example](.env.example));
+nothing in the code is preview-specific. We use **preview** for testing, but **mainnet is
+fully supported** with the same configuration.
+
+## Quick start
 
 ```bash
 pnpm install
-pnpm dev
 ```
 
-# Building For Production
-
-To build this application for production:
+The app needs Supabase before it will run. Create a project (or start the local stack),
+apply the migrations, then set the environment variables:
 
 ```bash
-pnpm build
+cp .env.example .env        # then fill in the values — see docs/USER_GUIDE.md
+pnpm supabase migration up   # apply the schema in supabase/migrations
+pnpm dev                     # http://localhost:3000
 ```
 
-## Advanced on-chain features
+See the [User Guide](docs/USER_GUIDE.md) for the full setup, branding/white-label
+configuration, environment variables, and deployment.
 
-This project includes advanced Cardano on-chain features (traceability, escrow, reputation).  
-See [docs/advanced-onchain.md](docs/advanced-onchain.md) for details.
+## Documentation
 
-For the oracle-driven escrow keeper (`settle-escrows`) that ties the shipping oracle to automatic on-chain settlement, see the [Oracle-Driven Escrow Settlement integration guide](docs/integration-escrow.md).
+- [User Guide](docs/USER_GUIDE.md) — setup, branding, env vars, Supabase, Vercel deploy
+- [Advanced on-chain features](docs/advanced-onchain.md) — traceability, escrow, badges
+- [Oracle-driven escrow settlement](docs/integration-escrow.md) — the keeper integration
+- [Design document](design/000-ecommerce-cardano.md) and
+  [architecture diagrams](docs/architecture/README.md)
 
-## Testing
-
-This project uses [Vitest](https://vitest.dev/) for testing. You can run the tests with:
+## Scripts
 
 ```bash
-pnpm test
+pnpm dev        # start the dev server on port 3000
+pnpm build      # production build
+pnpm test       # unit tests (Vitest)
+pnpm test:e2e   # end-to-end tests (require a local dolos node + env — see integration-escrow.md)
+pnpm lint       # Biome lint
+pnpm format     # Biome format
+pnpm check      # Biome lint + format check
 ```
 
-## Styling
+Operator CLI scripts (traceability, escrow, badges, keeper) are documented in
+[docs/advanced-onchain.md](docs/advanced-onchain.md#operator-scripts).
 
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
+## License
 
-
-## Linting & Formatting
-
-This project uses [Biome](https://biomejs.dev/) for linting and formatting. The following scripts are available:
-
-
-```bash
-pnpm lint
-pnpm format
-pnpm check
-```
-
-
-## Shadcn
-
-Add components using the latest version of [Shadcn](https://ui.shadcn.com/).
-
-```bash
-pnpm dlx shadcn@latest add button
-```
-
-
-
-## Routing
-This project uses [TanStack Router](https://tanstack.com/router). The initial setup is a file based router. Which means that the routes are managed as files in `src/routes`.
-
-### Adding A Route
-
-To add a new route to your application just add another a new file in the `./src/routes` directory.
-
-TanStack will automatically generate the content of the route file for you.
-
-Now that you have two routes you can use a `Link` component to navigate between them.
-
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
-
-```tsx
-import { Link } from "@tanstack/react-router";
-```
-
-Then anywhere in your JSX you can use it like so:
-
-```tsx
-<Link to="/about">About</Link>
-```
-
-This will create a link that will navigate to the `/about` route.
-
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
-
-### Using A Layout
-
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you use the `<Outlet />` component.
-
-Here is an example layout that includes a header:
-
-```tsx
-import { Outlet, createRootRoute } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
-
-import { Link } from "@tanstack/react-router";
-
-export const Route = createRootRoute({
-  component: () => (
-    <>
-      <header>
-        <nav>
-          <Link to="/">Home</Link>
-          <Link to="/about">About</Link>
-        </nav>
-      </header>
-      <Outlet />
-      <TanStackRouterDevtools />
-    </>
-  ),
-})
-```
-
-The `<TanStackRouterDevtools />` component is not required so you can remove it if you don't want it in your layout.
-
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
-
-
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-const peopleRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/people",
-  loader: async () => {
-    const response = await fetch("https://swapi.dev/api/people");
-    return response.json() as Promise<{
-      results: {
-        name: string;
-      }[];
-    }>;
-  },
-  component: () => {
-    const data = peopleRoute.useLoaderData();
-    return (
-      <ul>
-        {data.results.map((person) => (
-          <li key={person.name}>{person.name}</li>
-        ))}
-      </ul>
-    );
-  },
-});
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-### React-Query
-
-React-Query is an excellent addition or alternative to route loading and integrating it into you application is a breeze.
-
-First add your dependencies:
-
-```bash
-pnpm add @tanstack/react-query @tanstack/react-query-devtools
-```
-
-Next we'll need to create a query client and provider. We recommend putting those in `main.tsx`.
-
-```tsx
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-
-// ...
-
-const queryClient = new QueryClient();
-
-// ...
-
-if (!rootElement.innerHTML) {
-  const root = ReactDOM.createRoot(rootElement);
-
-  root.render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  );
-}
-```
-
-You can also add TanStack Query Devtools to the root route (optional).
-
-```tsx
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-
-const rootRoute = createRootRoute({
-  component: () => (
-    <>
-      <Outlet />
-      <ReactQueryDevtools buttonPosition="top-right" />
-      <TanStackRouterDevtools />
-    </>
-  ),
-});
-```
-
-Now you can use `useQuery` to fetch your data.
-
-```tsx
-import { useQuery } from "@tanstack/react-query";
-
-import "./App.css";
-
-function App() {
-  const { data } = useQuery({
-    queryKey: ["people"],
-    queryFn: () =>
-      fetch("https://swapi.dev/api/people")
-        .then((res) => res.json())
-        .then((data) => data.results as { name: string }[]),
-    initialData: [],
-  });
-
-  return (
-    <div>
-      <ul>
-        {data.map((person) => (
-          <li key={person.name}>{person.name}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-export default App;
-```
-
-You can find out everything you need to know on how to use React-Query in the [React-Query documentation](https://tanstack.com/query/latest/docs/framework/react/overview).
-
-## State Management
-
-Another common requirement for React applications is state management. There are many options for state management in React. TanStack Store provides a great starting point for your project.
-
-First you need to add TanStack Store as a dependency:
-
-```bash
-pnpm add @tanstack/store
-```
-
-Now let's create a simple counter in the `src/App.tsx` file as a demonstration.
-
-```tsx
-import { useStore } from "@tanstack/react-store";
-import { Store } from "@tanstack/store";
-import "./App.css";
-
-const countStore = new Store(0);
-
-function App() {
-  const count = useStore(countStore);
-  return (
-    <div>
-      <button onClick={() => countStore.setState((n) => n + 1)}>
-        Increment - {count}
-      </button>
-    </div>
-  );
-}
-
-export default App;
-```
-
-One of the many nice features of TanStack Store is the ability to derive state from other state. That derived state will update when the base state updates.
-
-Let's check this out by doubling the count using derived state.
-
-```tsx
-import { useStore } from "@tanstack/react-store";
-import { Store, Derived } from "@tanstack/store";
-import "./App.css";
-
-const countStore = new Store(0);
-
-const doubledStore = new Derived({
-  fn: () => countStore.state * 2,
-  deps: [countStore],
-});
-doubledStore.mount();
-
-function App() {
-  const count = useStore(countStore);
-  const doubledCount = useStore(doubledStore);
-
-  return (
-    <div>
-      <button onClick={() => countStore.setState((n) => n + 1)}>
-        Increment - {count}
-      </button>
-      <div>Doubled - {doubledCount}</div>
-    </div>
-  );
-}
-
-export default App;
-```
-
-We use the `Derived` class to create a new store that is derived from another store. The `Derived` class has a `mount` method that will start the derived store updating.
-
-Once we've created the derived store we can use it in the `App` component just like we would any other store using the `useStore` hook.
-
-You can find out everything you need to know on how to use TanStack Store in the [TanStack Store documentation](https://tanstack.com/store/latest).
-
-# Demo files
-
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
+[Apache 2.0](LICENSE).

@@ -34,12 +34,17 @@ Client-side variables (exposed to the browser):
 - `VITE_SUPABASE_URL`: Supabase project URL.
 - `VITE_SUPABASE_ANON_KEY`: Supabase public anon key.
 - `VITE_API_URL`: Optional base URL for external APIs.
-- `VITE_MERCHANT_ADDRESS`: Cardano merchant address.
 
 Server-side variables (do not expose):
 
 - `SUPABASE_SECRET_KEY`: Supabase service role key.
-- `CARDANO_MERCHANT_SKEY`: Cardano signing key for server-side operations (used to sign the buy order transactions)
+- `CARDANO_MERCHANT_SKEY`: Cardano signing key for server-side operations (used to sign the buy order transactions).
+- `MERCHANT_ADDRESS`: Bech32 address of the merchant's backend signer wallet.
+
+For the full list of variables used by the advanced on-chain features (escrow, badges,
+oracle keeper), see [docs/advanced-onchain.md](advanced-onchain.md#required-environment)
+and [docs/integration-escrow.md](integration-escrow.md#required-environment-variables).
+The committed [.env.example](../.env.example) is the source of truth for variable names.
 
 Supabase clients read these values from [src/lib/supabase.ts](src/lib/supabase.ts) and server functions (orders) use the secret key via [src/server-fns/orders.ts](src/server-fns/orders.ts).
 
