@@ -78,6 +78,36 @@ pnpm dev                     # http://localhost:3000
 See the [User Guide](docs/USER_GUIDE.md) for the full setup, branding/white-label
 configuration, environment variables, and deployment.
 
+## Deploy to Vercel
+
+The template is designed to run on **Vercel + Supabase**, and the reference instances are
+deployed this way. No `vercel.json` is needed — the app builds on Nitro, which detects the
+Vercel environment automatically and emits the right server output, so Vercel deploys it
+zero-config once the environment variables are set.
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/tx3-lang/tx3-ecommerce-template&env=VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY,SUPABASE_SECRET_KEY,CARDANO_MERCHANT_SKEY,MERCHANT_ADDRESS,TX3_TRP_ENDPOINT,TX3_TRP_API_KEY,TX3_PROFILE,VITE_TX3_PROFILE&envDescription=Supabase%20and%20Cardano%20configuration%20%E2%80%94%20see%20.env.example&envLink=https://github.com/tx3-lang/tx3-ecommerce-template/blob/main/.env.example)
+
+> **Heads up:** the button is not a true one-click — Vercel cannot provision your database.
+> You must **set up Supabase first** (create the project and run the migrations); the button
+> only clones the repo and prompts for the environment variables.
+
+Steps:
+
+1. **Set up Supabase** — create a project, then apply the schema from
+   [`supabase/migrations`](supabase/migrations) (`pnpm supabase migration up` against your
+   project, or push via the Supabase CLI). Optionally load [`supabase/seed`](supabase/seed).
+2. **Import the repo in Vercel** — Vercel auto-detects TanStack Start. Keep the defaults:
+   install command `pnpm install`, build command `pnpm build`, and **leave the output
+   directory on its default** (do not set `dist` — this is an SSR app, not a static build).
+3. **Set the environment variables** in the Vercel project settings — at minimum the
+   Supabase trio (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SECRET_KEY`) plus
+   the Cardano config for payments (`CARDANO_MERCHANT_SKEY`, `MERCHANT_ADDRESS`,
+   `TX3_TRP_ENDPOINT`, `TX3_TRP_API_KEY`, `TX3_PROFILE`, `VITE_TX3_PROFILE`). See
+   [.env.example](.env.example) for the complete list and
+   [docs/USER_GUIDE.md](docs/USER_GUIDE.md) for descriptions.
+4. **Deploy.** Pick your target network via `TX3_PROFILE` + the TRP endpoint (preview,
+   preprod, or mainnet) — see [Network](#network) above.
+
 ## Documentation
 
 - [User Guide](docs/USER_GUIDE.md) — setup, branding, env vars, Supabase, Vercel deploy

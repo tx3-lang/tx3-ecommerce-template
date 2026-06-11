@@ -61,12 +61,20 @@ For on-chain advanced features (traceability, escrow, reputation), see [docs/adv
 
 ## Vercel deployment
 
-This project is ready for Vercel.
+This project is ready for Vercel — no `vercel.json` is required. It is an SSR app built on
+Nitro, which detects the Vercel environment and emits the correct server output automatically,
+so Vercel deploys it zero-config once the environment variables are set.
 
-1. Import the repository in Vercel.
-2. Set the environment variables listed above in the Vercel project settings.
-3. Use `pnpm install` as the install command and `pnpm build` as the build command.
-4. The default Vite output directory is `dist` (Vercel detects it automatically).
+1. Set up Supabase first (create the project and apply the migrations) — Vercel cannot
+   provision your database. See [Supabase setup](#supabase-setup) above.
+2. Import the repository in Vercel. It auto-detects TanStack Start.
+3. Keep the defaults: install command `pnpm install`, build command `pnpm build`, and
+   **leave the output directory on its default**. Do NOT set it to `dist` — this is an SSR
+   build (Nitro writes the Vercel output), not a static site.
+4. Set the environment variables listed above in the Vercel project settings.
+
+The README has a one-click [Deploy to Vercel](../README.md#deploy-to-vercel) button that
+pre-fills the required variables (Supabase must still be set up first).
 
 ## Where to customize behavior
 
